@@ -1,0 +1,3 @@
+# idolminds
+
+Currently hacking...
