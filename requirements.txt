@@ -1,3 +1,9 @@
 TTS
 torch
-soundfile 
+soundfile
+flask
+gunicorn
+werkzeug
+python-dotenv
+openai-whisper
+openai 

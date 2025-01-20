@@ -3,6 +3,7 @@ __pycache__/
 .notes/
 data/
 
+.env
 *.pyc
 *.wav
 .DS_Store
