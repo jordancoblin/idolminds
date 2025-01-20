@@ -55,7 +55,8 @@ async function processText() {
 
         if (response.ok) {
             const audioBlob = await response.blob();
-            displayResponse(text, audioBlob);
+            const responseText = text; // Store the original text
+            displayResponse(responseText, audioBlob);
         } else {
             const error = await response.json();
             alert(error.error);
@@ -77,8 +78,8 @@ async function processAudio(audioBlob) {
         });
 
         if (response.ok) {
-            const result = await response.json();
-            displayResponse(result.text, null, result.transcription);
+            const audioBlob = await response.blob();
+            displayResponse("AI Response", audioBlob);
             document.getElementById('recordingStatus').textContent = '';
         } else {
             const error = await response.json();
@@ -90,38 +91,29 @@ async function processAudio(audioBlob) {
     }
 }
 
-function displayResponse(text, audioBlob = null, transcription = null) {
+function displayResponse(text, audioBlob = null) {
     const responseSection = document.getElementById('responseSection');
     const textResponse = document.getElementById('textResponse');
     const audioResponse = document.getElementById('audioResponse');
 
     responseSection.classList.remove('hidden');
     
-    // Display transcription if available
-    if (transcription) {
-        textResponse.innerHTML = `
-            <div class="mb-4">
-                <div class="font-semibold text-gray-700">Your message:</div>
-                <div class="text-gray-600">${transcription}</div>
-            </div>
-            <div>
-                <div class="font-semibold text-gray-700">AI Response:</div>
-                <div class="text-gray-600">${text}</div>
-            </div>
-        `;
-    } else {
-        textResponse.innerHTML = `
-            <div>
-                <div class="font-semibold text-gray-700">AI Response:</div>
-                <div class="text-gray-600">${text}</div>
-            </div>
-        `;
-    }
+    textResponse.innerHTML = `
+        <div>
+            <div class="font-semibold text-gray-700">Your message:</div>
+            <div class="text-gray-600">${text}</div>
+        </div>
+    `;
 
     if (audioBlob) {
         const audioUrl = URL.createObjectURL(audioBlob);
         audioResponse.src = audioUrl;
         audioResponse.classList.remove('hidden');
+        
+        // Automatically play the audio response
+        audioResponse.play().catch(e => {
+            console.log('Auto-play failed:', e);
+        });
     } else {
         audioResponse.classList.add('hidden');
     }

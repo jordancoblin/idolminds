@@ -6,6 +6,7 @@ import time
 import whisper
 from openai import OpenAI
 from dotenv import load_dotenv
+import io
 
 # Load environment variables
 load_dotenv()
@@ -43,14 +44,31 @@ def generate_response(input_text):
             messages=[
                 {"role": "system", "content": "You are a helpful AI assistant. Keep your responses concise and friendly."},
                 {"role": "user", "content": input_text}
-            ],
-            max_tokens=150,
-            temperature=0.7
+            ]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating response: {str(e)}")
         return "I apologize, but I'm having trouble generating a response right now."
+
+def generate_speech(text):
+    try:
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input=text
+        )
+        
+        # Get the audio data
+        audio_data = io.BytesIO()
+        for chunk in response.iter_bytes():
+            audio_data.write(chunk)
+        audio_data.seek(0)
+        
+        return audio_data
+    except Exception as e:
+        print(f"Error generating speech: {str(e)}")
+        return None
 
 @app.route('/')
 def index():
@@ -65,7 +83,20 @@ def process_text():
     try:
         # Generate response using OpenAI
         response_text = generate_response(text)
-        return jsonify({'text': response_text}), 200
+        
+        # Generate speech from the response
+        audio_data = generate_speech(response_text)
+        
+        if audio_data:
+            return send_file(
+                audio_data,
+                mimetype='audio/mp3',
+                as_attachment=True,
+                download_name='response.mp3'
+            )
+        else:
+            return jsonify({'error': 'Failed to generate speech'}), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -94,13 +125,21 @@ def process_audio():
             # Generate response to transcribed text
             response_text = generate_response(transcribed_text)
             
+            # Generate speech from the response
+            audio_data = generate_speech(response_text)
+            
             # Clean up the temporary file
             os.remove(filepath)
             
-            return jsonify({
-                'text': response_text,
-                'transcription': transcribed_text
-            })
+            if audio_data:
+                return send_file(
+                    audio_data,
+                    mimetype='audio/mp3',
+                    as_attachment=True,
+                    download_name='response.mp3'
+                )
+            else:
+                return jsonify({'error': 'Failed to generate speech'}), 500
             
         except Exception as e:
             return jsonify({'error': f'Error processing audio: {str(e)}'}), 500
