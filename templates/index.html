@@ -3,32 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Interface</title>
+    <title>IdolMinds</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- color palette: https://coolors.co/deefb7-98dfaf-5fb49c-414288-682d63 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#414288',
+                        secondary: '#5FB49C',
+                        accent: '#98DFAF',
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6">
-            <h1 class="text-3xl font-bold text-center mb-8">IdolMinds</h1>
-            
-            <!-- Audio Input Section -->
-            <div class="mb-8">
-                <h2 class="text-xl font-semibold mb-4">Voice Input</h2>
-                <div class="flex justify-center items-center gap-4">
-                    <button id="recordButton" onclick="toggleRecording()" class="bg-red-500 text-white px-6 py-3 rounded-full hover:bg-red-600 transition-colors">
-                        Start Recording
-                    </button>
-                    <div id="recordingStatus" class="text-gray-600"></div>
-                </div>
+<body class="bg-primary min-h-screen flex flex-col items-center justify-center">
+    <div class="container mx-auto px-4 py-8 flex flex-col items-center">
+        <h1 class="text-4xl font-bold text-accent mb-12">IdolMinds</h1>
+        
+        <!-- Microphone Button -->
+        <div class="relative mb-8">
+            <div class="mic-container">
+                <div class="mic-ripple"></div>
+                <button id="recordButton" onclick="toggleRecording()" 
+                        class="mic-button bg-secondary text-white rounded-full w-32 h-32 flex items-center justify-center hover:bg-opacity-90 transition-all">
+                    <i class="fas fa-microphone text-4xl"></i>
+                </button>
             </div>
+            <div id="recordingStatus" class="text-accent text-xl mt-6 text-center"></div>
+        </div>
 
-            <!-- Response Section -->
-            <div id="responseSection" class="mt-8 hidden">
-                <h2 class="text-xl font-semibold mb-4">Response</h2>
-                <div id="textResponse" class="mb-4 p-4 bg-gray-50 rounded-lg"></div>
-                <audio id="audioResponse" controls class="w-full"></audio>
-            </div>
+        <!-- Response Section -->
+        <div id="responseSection" class="mt-8 w-full max-w-2xl hidden">
+            <div id="textResponse" class="mb-4 p-6 bg-secondary bg-opacity-10 rounded-lg text-accent"></div>
+            <audio id="audioResponse" controls class="w-full"></audio>
         </div>
     </div>
 

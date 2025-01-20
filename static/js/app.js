@@ -23,19 +23,22 @@ async function toggleRecording() {
     }
 
     const button = document.getElementById('recordButton');
+    const micContainer = button.closest('.mic-container');
     const status = document.getElementById('recordingStatus');
 
     if (!isRecording) {
         mediaRecorder.start();
         isRecording = true;
-        button.textContent = 'Stop Recording';
-        button.classList.add('recording');
-        status.textContent = 'Recording...';
+        micContainer.classList.add('recording');
+        status.textContent = 'Listening...';
+        
+        // Hide previous response when starting new recording
+        const responseSection = document.getElementById('responseSection');
+        responseSection.classList.add('hidden');
     } else {
         mediaRecorder.stop();
         isRecording = false;
-        button.textContent = 'Start Recording';
-        button.classList.remove('recording');
+        micContainer.classList.remove('recording');
         status.textContent = 'Processing...';
     }
 }
@@ -52,30 +55,34 @@ async function processAudio(audioBlob) {
 
         if (response.ok) {
             const audioBlob = await response.blob();
-            displayResponse("AI Response", audioBlob);
+            displayResponse("", audioBlob);
             document.getElementById('recordingStatus').textContent = '';
         } else {
             const error = await response.json();
             alert(error.error);
+            document.getElementById('recordingStatus').textContent = '';
         }
     } catch (error) {
         console.error('Error:', error);
         alert('An error occurred while processing your request.');
+        document.getElementById('recordingStatus').textContent = '';
     }
 }
 
 function displayResponse(text, audioBlob = null) {
     const responseSection = document.getElementById('responseSection');
+    const textResponse = document.getElementById('textResponse');
     const audioResponse = document.getElementById('audioResponse');
-
-    responseSection.classList.remove('hidden');
 
     if (audioBlob) {
         const audioUrl = URL.createObjectURL(audioBlob);
         audioResponse.src = audioUrl;
         audioResponse.classList.remove('hidden');
         
-        // Automatically play the audio response
+        // Show response section with animation
+        responseSection.classList.remove('hidden');
+        
+        // Auto-play the response
         audioResponse.play().catch(e => {
             console.log('Auto-play failed:', e);
         });

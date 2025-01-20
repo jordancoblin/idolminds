@@ -6,4 +6,81 @@
     0% { transform: scale(1); }
     50% { transform: scale(1.1); }
     100% { transform: scale(1); }
+}
+
+.mic-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.mic-button {
+    position: relative;
+    z-index: 2;
+    transition: all 0.3s ease;
+}
+
+.mic-button:hover {
+    transform: scale(1.05);
+}
+
+.mic-ripple {
+    position: absolute;
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    background-color: #5FB49C;
+    opacity: 0;
+    z-index: 1;
+}
+
+.recording .mic-button {
+    background-color: #98DFAF;
+}
+
+.recording .mic-ripple {
+    animation: ripple 2s linear infinite;
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* Audio player styling */
+audio {
+    height: 40px;
+    border-radius: 20px;
+    background-color: #5FB49C;
+}
+
+audio::-webkit-media-controls-panel {
+    background-color: #5FB49C;
+}
+
+audio::-webkit-media-controls-current-time-display,
+audio::-webkit-media-controls-time-remaining-display {
+    color: white;
+}
+
+/* Response section fade in */
+#responseSection {
+    transition: all 0.3s ease;
+}
+
+#responseSection.hidden {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+#responseSection:not(.hidden) {
+    opacity: 1;
+    transform: translateY(0);
 } 
