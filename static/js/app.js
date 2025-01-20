@@ -40,33 +40,6 @@ async function toggleRecording() {
     }
 }
 
-async function processText() {
-    const text = document.getElementById('textInput').value;
-    if (!text) return;
-
-    try {
-        const response = await fetch('/process-text', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ text }),
-        });
-
-        if (response.ok) {
-            const audioBlob = await response.blob();
-            const responseText = text; // Store the original text
-            displayResponse(responseText, audioBlob);
-        } else {
-            const error = await response.json();
-            alert(error.error);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred while processing your request.');
-    }
-}
-
 async function processAudio(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob);
@@ -93,17 +66,9 @@ async function processAudio(audioBlob) {
 
 function displayResponse(text, audioBlob = null) {
     const responseSection = document.getElementById('responseSection');
-    const textResponse = document.getElementById('textResponse');
     const audioResponse = document.getElementById('audioResponse');
 
     responseSection.classList.remove('hidden');
-    
-    textResponse.innerHTML = `
-        <div>
-            <div class="font-semibold text-gray-700">Your message:</div>
-            <div class="text-gray-600">${text}</div>
-        </div>
-    `;
 
     if (audioBlob) {
         const audioUrl = URL.createObjectURL(audioBlob);

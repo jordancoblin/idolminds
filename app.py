@@ -16,22 +16,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
 # Initialize OpenAI client
-print("OPENAI_API_KEY: ", os.getenv('OPENAI_API_KEY'))
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-# List available models
-# def list_models():
-#     try:
-#         models = client.models.list()
-#         return [model.id for model in models]
-#     except Exception as e:
-#         print(f"Error listing models: {str(e)}")
-#         return []
-
-# # Print available models on startup
-# print("Available OpenAI Models:")
-# for model in list_models():
-#     print(f"- {model}")
-
 
 # Load Whisper model (using the smallest model for quick responses)
 # model = whisper.load_model("small")
@@ -73,32 +58,6 @@ def generate_speech(text):
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/process-text', methods=['POST'])
-def process_text():
-    text = request.json.get('text')
-    if not text:
-        return jsonify({'error': 'No text provided'}), 400
-    
-    try:
-        # Generate response using OpenAI
-        response_text = generate_response(text)
-        
-        # Generate speech from the response
-        audio_data = generate_speech(response_text)
-        
-        if audio_data:
-            return send_file(
-                audio_data,
-                mimetype='audio/mp3',
-                as_attachment=True,
-                download_name='response.mp3'
-            )
-        else:
-            return jsonify({'error': 'Failed to generate speech'}), 500
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/process-audio', methods=['POST'])
 def process_audio():
