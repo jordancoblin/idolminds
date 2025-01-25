@@ -6,4 +6,9 @@ gunicorn
 werkzeug
 python-dotenv
 openai-whisper
-openai 
+openai
+pyttsx3==2.90
+py3-tts
+realtimetts[all]
+transformers==4.33.2
+TTS==0.17.6
