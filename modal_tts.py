@@ -1,6 +1,8 @@
 import modal
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
+import os
+import time
 import torch
 
 app = modal.App("idolminds-tts")
@@ -14,17 +16,32 @@ image = (
         "torchaudio",
         "TTS",
         "scipy",
+        # force_build=True
     )
+    # .add_local_dir("models/alan_watts", remote_path="/alan_watts")               # Mount data directory
+    # .add_local_file("models/alan_watts/config.json", remote_path="/alan_watts/config.json")
 )
 
-# with image.imports():
-#     from huggingface_hub import hf_hub_download
-#     import torch
+with image.imports():
+    from huggingface_hub import hf_hub_download
+    import torch
+    from TTS.tts.configs.xtts_config import XttsConfig
+    from TTS.tts.models.xtts import Xtts
+    import os
+    import time
+    import io
+    import scipy.io.wavfile
+
 
 volume = modal.Volume.from_name(
     "tts-model-storage", create_if_missing=True
 )
-MODEL_DIR = "/alan_watts"
+# Check if the file already exists
+# if os.path.exists(file_path):
+#     print(f"File already exists: {file_path}, skipping upload.")
+#     return
+# with volume.batch_upload() as batch:
+#     batch.put_file("models/alan_watts/config.json", "/alan_watts/config.json")
 
 # huggingface_secret = modal.Secret.from_name(
 #     "huggingface-secret", required_keys=["HF_TOKEN"]
@@ -47,39 +64,40 @@ MODEL_DIR = "/alan_watts"
     gpu=modal.gpu.T4(),
     image=image,
     container_idle_timeout=120,
-    volumes={MODEL_DIR: volume},
+    volumes={"/models": volume},
 )
 class TTSService:    
     @modal.enter()
     def enter(self):
-        from huggingface_hub import hf_hub_download
-
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print("device: ", self.device)
 
         REPO_ID = "jcoblin/idolminds-tts"
-        SUB_DIR = "alan_watts"
         CONFIG_FILE = "config.json"
         CHECKPOINT_FILE = "model.pth"
         VOCAB_FILE = "vocab.json"
         SPEAKERS_FILE = "speakers_xtts.pth"
         REFERENCE_FILE = "reference.wav"
+
+        # Ensure the correct full paths inside the volume
+        local_model_dir = f"/models/alan_watts"
+        os.makedirs(local_model_dir, exist_ok=True)  # Ensure the directory exists
         
         # Download files from Hugging Face
-        for file in [CONFIG_FILE, CHECKPOINT_FILE, VOCAB_FILE, SPEAKERS_FILE, REFERENCE_FILE]:
+        for file in [CHECKPOINT_FILE, VOCAB_FILE, SPEAKERS_FILE, REFERENCE_FILE]:
             hf_hub_download(
                 repo_id=REPO_ID,
-                local_dir=MODEL_DIR,
-                filename=f"{SUB_DIR}/{file}"
+                local_dir=local_model_dir,
+                filename=f"alan_watts/{file}"
             )
 
         # Initialize XTTS model with the downloaded files
-        xtts_config = f"{MODEL_DIR}/{CONFIG_FILE}"
-        xtts_checkpoint = f"{MODEL_DIR}/{CHECKPOINT_FILE}"
-        xtts_vocab = f"{MODEL_DIR}/{VOCAB_FILE}"
-        xtts_speaker = f"{MODEL_DIR}/{SPEAKERS_FILE}"
-        self.reference_audio = f"{MODEL_DIR}/{REFERENCE_FILE}"
+        xtts_config = f"{local_model_dir}/{CONFIG_FILE}"
+        xtts_checkpoint = f"{local_model_dir}/{CHECKPOINT_FILE}"
+        xtts_vocab = f"{local_model_dir}/{VOCAB_FILE}"
+        xtts_speaker = f"{local_model_dir}/{SPEAKERS_FILE}"
+        self.reference_audio = f"{local_model_dir}/{REFERENCE_FILE}"
         
-        # TODO: this config does not exist in the container
         self.config = XttsConfig()
         self.config.load_json(xtts_config)
         
@@ -92,22 +110,10 @@ class TTSService:
             speaker_file_path=xtts_speaker,
             use_deepspeed=False
         )
+        if self.device == "cuda":
+            self.model.cuda()
         self.model.to(self.device)
         print("XTTS model loaded successfully")
-
-    # def load_tts_model(self):
-    #     xtts_config = "/content/models/alan_watts/config.json"
-    #     xtts_checkpoint = "/content/models/alan_watts/model.pth"
-    #     xtts_vocab = "/content/models/alan_watts/vocab.json"
-    #     xtts_speaker = "/content/models/alan_watts/speakers_xtts.pth"
-
-    #     config = XttsConfig()
-    #     config.load_json(xtts_config)
-    #     xtts_model = Xtts.init_from_config(config)
-    #     print("Loading XTTS model")
-    #     xtts_model.load_checkpoint(config, checkpoint_path=xtts_checkpoint, vocab_path=xtts_vocab, speaker_file_path=xtts_speaker, use_deepspeed=False)
-    #     xtts_model.cuda()  # Move model to GPU
-    #     return xtts_model, config
 
     @modal.method()
     def generate_speech(self, text: str) -> bytes:
@@ -121,6 +127,7 @@ class TTSService:
                 sound_norm_refs=self.config.sound_norm_refs,
             )
 
+            # TODO: add explicit attention mask?
             # Generate speech
             out = self.model.inference(
                 text=text,
@@ -144,27 +151,50 @@ class TTSService:
             wav = (wav * 32767).astype('int16')
 
             # Save to bytes
-            import io
-            import scipy.io.wavfile
             wav_bytes = io.BytesIO()
             scipy.io.wavfile.write(wav_bytes, rate=24000, data=wav)
             return wav_bytes.getvalue()
 
         except Exception as e:
             print(f"Error generating speech: {str(e)}")
-            raise 
+            raise
+    
+    @modal.method()
+    def save_to_volume(self, audio_bytes: bytes, filename: str):
+        import os
+        
+        out_dir = "/models/alan_watts/out"
+        out_path = f"{out_dir}/{filename}"
+
+        os.makedirs(out_dir, exist_ok=True)
+        with open(out_path, "wb") as f:
+            f.write(audio_bytes)
+        
+        return out_path
 
 @app.local_entrypoint()
 def main():
+    import time
+
     # Sample text to convert to speech
     text = "Hello, this is a test of the text to speech system."
+
+    service = TTSService()
+
+    # TODO: This first speech generation takes a while - I'm guessing
+    # it's running enter() -> how to get this to load on startup?
+    print("Generating speech...")
+    start = time.time()
+    audio_bytes = service.generate_speech.remote(text)
+    end = time.time()
+    print(f"Speech generation took: {end - start} seconds")
+
+    print("Generating speech...")
+    start = time.time()
+    audio_bytes = service.generate_speech.remote(text)
+    end = time.time()
+    print(f"Speech generation # 2 took: {end - start} seconds")
     
-    # Create stub and get speech
-    f = TTSService()
-    audio_bytes = f.generate_speech.remote(text)
-    
-    # Save the output
-    output_path = "modal_tts_output.wav"
-    with open(output_path, "wb") as f:
-        f.write(audio_bytes)
-    print(f"Audio saved to {output_path}")
+    # Save to volume using remote function
+    saved_path = service.save_to_volume.remote(audio_bytes, "modal_tts_output.wav")
+    print(f"Audio saved to {saved_path}")
