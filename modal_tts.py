@@ -5,6 +5,7 @@ from common import app
 # Create a custom image with all dependencies
 image = (
     modal.Image.debian_slim(python_version="3.10")
+    .apt_install("ffmpeg")
     .pip_install(
         "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
@@ -13,8 +14,9 @@ image = (
         "TTS",
         "scipy",
         "jinja2",
-        "whisper",
+        "openai-whisper",
         "openai",
+        "python-multipart",
     )
 )
 
@@ -91,7 +93,7 @@ class TTSService:
         self.model.to(self.device)
         print("XTTS model loaded successfully")
 
-    @modal.method()
+    # @modal.method()
     def generate_speech(self, text: str) -> bytes:
         """Generate speech from text using the XTTS model."""
         try:
@@ -135,7 +137,7 @@ class TTSService:
             print(f"Error generating speech: {str(e)}")
             raise
     
-    @modal.method()
+    # @modal.method()
     def save_to_volume(self, audio_bytes: bytes, filename: str):
         import os
         
@@ -152,6 +154,7 @@ class TTSService:
     def web(self):
         from fastapi import FastAPI, UploadFile, File, HTTPException
         from fastapi.responses import FileResponse
+        from fastapi.middleware.cors import CORSMiddleware
         import whisper
         import os
         import time
@@ -159,6 +162,15 @@ class TTSService:
         import tempfile
 
         web_app = FastAPI()
+        
+        # Add CORS middleware
+        web_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],  # Allow all origins, or specify ["https://jordancoblin--idolminds-tts-web-dev.modal.run"]
+            allow_credentials=True,
+            allow_methods=["*"],  # Allow all methods
+            allow_headers=["*"],  # Allow all headers
+        )
 
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -194,6 +206,7 @@ class TTSService:
                 with open(filepath, "wb") as buffer:
                     content = await audio.read()
                     buffer.write(content)
+                print("Saved temp audio file to: ", filepath)
                 
                 # Transcribe the audio using Whisper
                 start_time = time.time()
@@ -208,12 +221,14 @@ class TTSService:
                 # Generate speech using TTSModel
                 start_time = time.time()
                 temp_response_path = os.path.join(temp_dir, "response.wav")
-                wav = self.generate_speech(response_text)
+                wav_bytes = self.generate_speech(response_text)
                 print(f"Speech generation took {time.time() - start_time:.2f} seconds")
                 
                 # Save the generated audio
                 try:
-                    scipy.io.wavfile.write(temp_response_path, rate=24000, data=wav)
+                    # Write bytes directly to file
+                    with open(temp_response_path, "wb") as f:
+                        f.write(wav_bytes)
                 except Exception as e:
                     print("Error writing to file: ", e)
                 
@@ -228,6 +243,8 @@ class TTSService:
                     
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+        
+        return web_app
 
 # @app.local_entrypoint()
 # def main():

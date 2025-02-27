@@ -7,12 +7,14 @@ const getTTSServiceURL = () => {
     // Get the current URL
     const currentURL = new URL(window.location.href);
     let hostname = currentURL.hostname;
+
+    console.log("hostname: ", hostname);
     
     // If we're in a Modal deployment, we can derive the TTSService URL from the current hostname
     // Modify this pattern based on your actual Modal deployment naming conventions
     if (hostname.includes('.modal.run')) {
         // Replace the 'web' app with 'TTSService'
-        hostname = hostname.replace('-web', '-idolminds-tts-web');
+        hostname = hostname.replace('-web', '-ttsservice-web');
         return `${currentURL.protocol}//${hostname}`;
     }
     
@@ -21,6 +23,7 @@ const getTTSServiceURL = () => {
 };
 
 async function setupRecorder() {
+    console.log("Setting up recorder...");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
 
@@ -62,6 +65,7 @@ async function toggleRecording() {
 }
 
 async function processAudio(audioBlob) {
+    console.log("Processing audio...");
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.wav'); // Add filename to help the server
 
