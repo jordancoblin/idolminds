@@ -2,6 +2,24 @@ let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
 
+// Get the TTSService URL based on current domain
+const getTTSServiceURL = () => {
+    // Get the current URL
+    const currentURL = new URL(window.location.href);
+    let hostname = currentURL.hostname;
+    
+    // If we're in a Modal deployment, we can derive the TTSService URL from the current hostname
+    // Modify this pattern based on your actual Modal deployment naming conventions
+    if (hostname.includes('.modal.run')) {
+        // Replace the 'web' app with 'TTSService'
+        hostname = hostname.replace('-web', '-idolminds-tts-web');
+        return `${currentURL.protocol}//${hostname}`;
+    }
+    
+    // For local development or if we can't determine the URL, use the same origin
+    return '';
+};
+
 async function setupRecorder() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
@@ -45,10 +63,16 @@ async function toggleRecording() {
 
 async function processAudio(audioBlob) {
     const formData = new FormData();
-    formData.append('audio', audioBlob);
+    formData.append('audio', audioBlob, 'recording.wav'); // Add filename to help the server
 
     try {
-        const response = await fetch('/process-audio', {
+        // Get the base URL for the TTSService
+        const baseURL = getTTSServiceURL();
+        const url = `${baseURL}/process-audio`;
+        
+        console.log(`Sending request to: ${url}`);
+        
+        const response = await fetch(url, {
             method: 'POST',
             body: formData,
         });
@@ -58,8 +82,9 @@ async function processAudio(audioBlob) {
             displayResponse("", audioBlob);
             document.getElementById('recordingStatus').textContent = '';
         } else {
-            const error = await response.json();
-            alert(error.error);
+            const error = await response.text();
+            console.error('Error response:', error);
+            alert('Error processing audio: ' + error);
             document.getElementById('recordingStatus').textContent = '';
         }
     } catch (error) {
