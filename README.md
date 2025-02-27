@@ -4,4 +4,8 @@ Speak with your idols. IdolMinds is meant to be a conversational AI web applicat
 
 IdolMinds is built using Modal and FastAPI for deployment, [coqui-ai/TTS](https://github.com/coqui-ai/TTS) for text-to-speech, and OpenAI language models for text generation.
 
-Currently baking...
+Demo app is up here: [https://jordancoblin--idolminds-tts-web.modal.run/](https://jordancoblin--idolminds-tts-web.modal.run/)
+
+Currently running on Modal GPUs, but needs more optimization for usability.
+
+
