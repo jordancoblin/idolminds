@@ -16,6 +16,7 @@
                         primary: '#414288',
                         secondary: '#5FB49C',
                         accent: '#98DFAF',
+                        purple: '#682D63'
                     }
                 }
             }
@@ -23,16 +24,23 @@
     </script>
 </head>
 <body class="bg-primary min-h-screen flex flex-col items-center justify-center">
+    <!-- GPU Warming Up Overlay -->
+    <div id="warmingUpOverlay" class="warming-up-overlay">
+        <div class="loading-spinner"></div>
+        <p class="text-accent text-xl mb-2">Warming up...</p>
+        <p class="text-accent text-sm">This may take a few seconds</p>
+    </div>
+
     <div class="container mx-auto px-4 py-8 flex flex-col items-center">
         <h1 class="text-4xl font-bold text-accent mb-12">IdolMinds</h1>
         
         <!-- Microphone Button -->
         <div class="relative mb-8">
-            <div class="mic-container">
+            <div id="micContainer" class="mic-container warming-up">
                 <div class="mic-ripple"></div>
                 <button id="recordButton" onclick="toggleRecording()" 
-                        class="mic-button bg-secondary text-white rounded-full w-32 h-32 flex items-center justify-center hover:bg-opacity-90 transition-all">
-                    <i class="fas fa-microphone text-4xl"></i>
+                        class="mic-button bg-secondary text-white rounded-full flex items-center justify-center hover:bg-opacity-90 transition-all" disabled>
+                    <i id="micIcon" class="fas fa-microphone text-4xl mic-icon"></i>
                 </button>
             </div>
             <div id="recordingStatus" class="text-accent text-xl mt-6 text-center"></div>

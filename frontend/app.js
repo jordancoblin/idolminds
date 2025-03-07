@@ -1,6 +1,7 @@
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
+let isReady = false;
 
 // Get the TTSService URL based on current domain
 const getTTSServiceURL = () => {
@@ -22,6 +23,60 @@ const getTTSServiceURL = () => {
     return '';
 };
 
+// Function to warm up the GPU when the page loads
+async function warmupGPU() {
+    try {
+        // Show warming up UI
+        document.getElementById('warmingUpOverlay').classList.remove('hidden');
+        document.getElementById('micContainer').classList.add('warming-up');
+        document.getElementById('recordButton').disabled = true;
+        
+        const baseURL = getTTSServiceURL();
+        const url = `${baseURL}/warmup`;
+        
+        console.log(`Warming up GPU, sending request to: ${url}`);
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        console.log('GPU warmup result:', result);
+        
+        // After warmup completes, transition to ready state
+        setTimeout(() => {
+            // Hide warming up overlay with fade effect
+            document.getElementById('warmingUpOverlay').classList.add('hidden');
+            
+            // Grow the mic button with animation
+            const micContainer = document.getElementById('micContainer');
+            micContainer.classList.remove('warming-up');
+            micContainer.classList.add('ready');
+            
+            // Enable the record button
+            document.getElementById('recordButton').disabled = false;
+            
+            isReady = true;
+        }, 500); // Small delay for better visual effect
+        
+    } catch (error) {
+        console.error('GPU warmup error:', error);
+        // Even if there's an error, still show the UI
+        document.getElementById('warmingUpOverlay').classList.add('hidden');
+        document.getElementById('micContainer').classList.remove('warming-up');
+        document.getElementById('micContainer').classList.add('ready');
+        document.getElementById('recordButton').disabled = false;
+        isReady = true;
+    }
+}
+
+// Call warmup when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize UI
+    document.getElementById('warmingUpOverlay').classList.remove('hidden');
+    
+    // Start warmup
+    warmupGPU();
+});
+
 async function setupRecorder() {
     console.log("Setting up recorder...");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -39,6 +94,8 @@ async function setupRecorder() {
 }
 
 async function toggleRecording() {
+    if (!isReady) return; // Prevent recording if not ready
+    
     if (!mediaRecorder) {
         await setupRecorder();
     }

@@ -13,12 +13,15 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .mic-button {
     position: relative;
     z-index: 2;
-    transition: all 0.3s ease;
+    transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 32px;
+    height: 32px;
 }
 
 .mic-button:hover {
@@ -83,4 +86,90 @@ audio::-webkit-media-controls-time-remaining-display {
 #responseSection:not(.hidden) {
     opacity: 1;
     transform: translateY(0);
+}
+
+/* GPU Warm-up state */
+.warming-up-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.warming-up {
+    transform: scale(0.6);
+}
+
+.warming-up .mic-button {
+    background-color: #682D63;
+    width: 16px;
+    height: 16px;
+}
+
+.warming-up .mic-ripple {
+    animation: warmup-pulse 1.5s infinite;
+    opacity: 0.3;
+    background-color: #682D63;
+}
+
+@keyframes warmup-pulse {
+    0% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.5); opacity: 0.1; }
+    100% { transform: scale(1); opacity: 0.3; }
+}
+
+.mic-icon {
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 1s ease 0.2s;
+}
+
+.ready {
+    transform: scale(1);
+}
+
+.ready .mic-icon {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.ready .mic-button {
+    width: 128px;
+    height: 128px;
+    background-color: #5FB49C;
+}
+
+.warming-up-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(65, 66, 136, 0.8); /* Primary color with opacity */
+    z-index: 10;
+    transition: opacity 0.5s ease;
+}
+
+.warming-up-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #5FB49C;
+    border-top-color: #98DFAF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 } 

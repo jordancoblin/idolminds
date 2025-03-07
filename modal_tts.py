@@ -193,6 +193,22 @@ class TTSService:
                 print(f"Error generating response: {str(e)}")
                 raise HTTPException(status_code=500, detail="Error generating response")
 
+        @web_app.get("/warmup")
+        async def warmup():
+            """Endpoint to warm up the GPU when the webpage is loaded"""
+            if self.device == "cuda":
+                try:
+                    print("Warming up GPU from web request...")
+                    warmup_text = "Hello, I'm warming up the GPU from a web request."
+                    _ = self.generate_speech(warmup_text)
+                    print("GPU warmup from web request completed successfully")
+                    return {"status": "success", "message": "GPU warmup completed"}
+                except Exception as e:
+                    print(f"GPU warmup from web request failed: {str(e)}")
+                    return {"status": "error", "message": f"GPU warmup failed: {str(e)}"}
+            else:
+                return {"status": "skipped", "message": "Not running on GPU, warmup skipped"}
+                
         @web_app.post("/process-audio")
         async def process_audio(audio: UploadFile = File(...)):
             if not audio:
