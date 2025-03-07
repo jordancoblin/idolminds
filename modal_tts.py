@@ -10,6 +10,8 @@ image = (
         "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
         "torch",
+        # "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
+        # "deepspeed==0.10.3",
         "torchaudio",
         "TTS",
         "scipy",
@@ -36,9 +38,10 @@ volume = modal.Volume.from_name(
 )
 
 @app.cls(
-    gpu=modal.gpu.T4(),
+    # gpu=modal.gpu.T4(), 
+    gpu=modal.gpu.A10G(),
     image=image,
-    container_idle_timeout=120,
+    container_idle_timeout=180,
     timeout=600,
     volumes={"/models": volume},
     secrets=[modal.Secret.from_name("openai-secret")],
@@ -47,9 +50,26 @@ class TTSService:
     
     @modal.enter()
     def enter(self):
+        print("Initializing TTSService...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print("device: ", self.device)
-
+        
+        # Use the cached model loader function - call it directly
+        if not hasattr(self, "model"):
+            model_dict = self.load_xtts_model(self.device)
+            
+            # Unpack the model dictionary
+            self.model = model_dict["model"]
+            self.config = model_dict["config"]
+            self.reference_audio = model_dict["reference_audio"]
+        else:
+            print("TTSService already initialized")
+        
+        print("TTSService initialized")
+    
+    def load_xtts_model(self, device):
+        """Load the XTTS model with caching for faster startup"""
+        print("Loading XTTS model...")
+        
         REPO_ID = "jcoblin/idolminds-tts"
         CONFIG_FILE = "config.json"
         CHECKPOINT_FILE = "model.pth"
@@ -61,37 +81,59 @@ class TTSService:
         local_model_dir = f"/models/alan_watts"
         os.makedirs(local_model_dir, exist_ok=True)  # Ensure the directory exists
         
-        # Download files from Hugging Face
+        # Check if files exist before downloading
+        files_to_download = []
         for file in [CHECKPOINT_FILE, VOCAB_FILE, SPEAKERS_FILE, REFERENCE_FILE]:
-            hf_hub_download(
-                repo_id=REPO_ID,
-                local_dir=local_model_dir,
-                filename=f"alan_watts/{file}"
-            )
-
-        # Initialize XTTS model with the downloaded files
+            file_path = f"{local_model_dir}/{file}"
+            if not os.path.exists(file_path):
+                files_to_download.append(file)
+        
+        # Download only missing files
+        if files_to_download:
+            print(f"Downloading {len(files_to_download)} missing files: {files_to_download}")
+            for file in files_to_download:
+                hf_hub_download(
+                    repo_id=REPO_ID,
+                    local_dir=local_model_dir,
+                    filename=f"alan_watts/{file}"
+                )
+        else:
+            print("All model files found in volume, skipping download")
+        
+        # Initialize paths
         xtts_config = f"{local_model_dir}/{CONFIG_FILE}"
         xtts_checkpoint = f"{local_model_dir}/{CHECKPOINT_FILE}"
         xtts_vocab = f"{local_model_dir}/{VOCAB_FILE}"
         xtts_speaker = f"{local_model_dir}/{SPEAKERS_FILE}"
-        self.reference_audio = f"{local_model_dir}/{REFERENCE_FILE}"
+        reference_audio = f"{local_model_dir}/{REFERENCE_FILE}"
         
-        self.config = XttsConfig()
-        self.config.load_json(xtts_config)
+        # Load config
+        config = XttsConfig()
+        config.load_json(xtts_config)
         
-        print("Loading XTTS model...")
-        self.model = Xtts.init_from_config(self.config)
-        self.model.load_checkpoint(
-            self.config,
+        # Initialize model
+        model = Xtts.init_from_config(config)
+        model.load_checkpoint(
+            config,
             checkpoint_path=xtts_checkpoint,
             vocab_path=xtts_vocab,
             speaker_file_path=xtts_speaker,
             use_deepspeed=False
         )
-        if self.device == "cuda":
-            self.model.cuda()
-        self.model.to(self.device)
+        
+        # Move to GPU and optimize
+        if device == "cuda":
+            model.cuda()
+            # Use half precision for faster inference and less memory usage
+            model = model.half()
+        model.to(device)
+        
         print("XTTS model loaded successfully")
+        return {
+            "model": model,
+            "config": config,
+            "reference_audio": reference_audio
+        }
 
     # @modal.method()
     def generate_speech(self, text: str) -> bytes:
