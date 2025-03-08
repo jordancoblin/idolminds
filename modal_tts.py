@@ -2,15 +2,23 @@ import modal
 
 from common import app
 
+# Necessary to use an image with CUDA toolkit installed for DeepSpeed
+# TODO: it is super slow loading the CUDA image. Perhaps we can just install the CUDA runtime manually?
+cuda_version = "12.4.0"  # should be no greater than host CUDA version
+flavor = "devel"  #  includes full CUDA toolkit
+operating_sys = "ubuntu22.04"
+tag = f"{cuda_version}-{flavor}-{operating_sys}"
+
 # Create a custom image with all dependencies
 image = (
-    modal.Image.debian_slim(python_version="3.10")
+    # modal.Image.debian_slim(python_version="3.10")
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("ffmpeg")
     .pip_install(
         "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
         "torch",
-        # "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
+        "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
         # "deepspeed==0.10.3",
         "torchaudio",
         "TTS",
@@ -52,6 +60,9 @@ class TTSService:
     def enter(self):
         print("Initializing TTSService...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_precision = 'half'
+        print(f"Using device: {self.device}")
+
         
         # Use the cached model loader function - call it directly
         if not hasattr(self, "model"):
@@ -118,14 +129,16 @@ class TTSService:
             checkpoint_path=xtts_checkpoint,
             vocab_path=xtts_vocab,
             speaker_file_path=xtts_speaker,
-            use_deepspeed=False
+            use_deepspeed=True
         )
         
         # Move to GPU and optimize
         if device == "cuda":
             model.cuda()
-            # Use half precision for faster inference and less memory usage
-            model = model.half()
+
+        # TODO: this is not working with DeepSpeed. Currently failing at self.model.get_conditioning_latents()
+        # if self.model_precision == 'half':
+        #     model = model.half()
         model.to(device)
         
         print("XTTS model loaded successfully")
@@ -139,6 +152,7 @@ class TTSService:
     def generate_speech(self, text: str) -> bytes:
         """Generate speech from text using the XTTS model."""
         try:
+            print("We here")
             # Get conditioning latents
             gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
                 audio_path=self.reference_audio,
@@ -146,6 +160,15 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
+            print("now we here")
+
+            print(f"model params dtype: {next(self.model.parameters()).dtype}")
+            
+            # Convert latents to half precision if model is in half precision
+            # if self.model_precision == 'half':
+            #     print("Converting latents to half precision")
+            #     gpt_cond_latent = gpt_cond_latent.half()
+            #     speaker_embedding = speaker_embedding.half()
 
             # TODO: add explicit attention mask?
             # Generate speech
