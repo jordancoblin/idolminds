@@ -11,14 +11,14 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 # Create a custom image with all dependencies
 image = (
-    # modal.Image.debian_slim(python_version="3.10")
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
+    modal.Image.debian_slim(python_version="3.10")
+    # modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.10")
     .apt_install("ffmpeg")
     .pip_install(
         "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
         "torch",
-        "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
+        # "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
         # "deepspeed==0.10.3",
         "torchaudio",
         "TTS",
@@ -129,7 +129,7 @@ class TTSService:
             checkpoint_path=xtts_checkpoint,
             vocab_path=xtts_vocab,
             speaker_file_path=xtts_speaker,
-            use_deepspeed=True
+            # use_deepspeed=True
         )
         
         # Move to GPU and optimize
