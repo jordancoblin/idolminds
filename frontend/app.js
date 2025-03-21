@@ -133,21 +133,76 @@ async function processAudio(audioBlob) {
         
         console.log(`Sending request to: ${url}`);
         
+        // Show response section early to prepare for streaming audio
+        const responseSection = document.getElementById('responseSection');
+        responseSection.classList.remove('hidden');
+        document.getElementById('recordingStatus').textContent = 'Receiving response...';
+        
+        // Set up MediaSource and audio element
+        const mediaSource = new MediaSource();
+        const audioResponse = document.getElementById('audioResponse');
+        audioResponse.src = URL.createObjectURL(mediaSource);
+        audioResponse.classList.remove('hidden');
+
+        
+        // Start streaming with fetch
         const response = await fetch(url, {
             method: 'POST',
             body: formData,
         });
 
-        if (response.ok) {
-            const audioBlob = await response.blob();
-            displayResponse("", audioBlob);
-            document.getElementById('recordingStatus').textContent = '';
-        } else {
+        if (!response.ok) {
             const error = await response.text();
             console.error('Error response:', error);
             alert('Error processing audio: ' + error);
             document.getElementById('recordingStatus').textContent = '';
+            return;
         }
+
+        console.log("Started receiving audio stream");
+
+        const reader = response.body.getReader();
+        let receivedChunks = 0;
+
+        mediaSource.addEventListener("sourceopen", async () => {
+            const mimeCodec = 'audio/mpeg';
+            const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+
+            async function pump() {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    console.log(`Stream complete. Received ${receivedChunks} chunks.`);
+                    mediaSource.endOfStream();
+                    document.getElementById('recordingStatus').textContent = '';
+                    return;
+                }
+
+                receivedChunks++;
+                console.log(`Received chunk ${receivedChunks}: ${value.length} bytes`);
+
+                try {
+                    if (sourceBuffer.updating) {
+                        await new Promise(resolve =>
+                            sourceBuffer.addEventListener("updateend", resolve, { once: true })
+                        );
+                    }
+                    sourceBuffer.appendBuffer(value);
+                } catch (error) {
+                    console.error("Error appending audio chunk:", error);
+                }
+
+                pump(); // Continue pumping
+            }
+
+            pump();
+        });
+
+        // Auto-play once data starts coming in
+        audioResponse.play().catch((e) => {
+            console.warn("Audio play failed (user interaction likely required):", e);
+        });
+
     } catch (error) {
         console.error('Error:', error);
         alert('An error occurred while processing your request.');
