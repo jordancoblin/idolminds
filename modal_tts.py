@@ -40,7 +40,6 @@ with image.imports():
     import io
     import scipy.io.wavfile
 
-
 volume = modal.Volume.from_name(
     "tts-model-storage", create_if_missing=True
 )
@@ -218,7 +217,7 @@ class TTSService:
     @modal.asgi_app()
     def web(self):
         from fastapi import FastAPI, UploadFile, File, HTTPException
-        from fastapi.responses import FileResponse
+        from fastapi.responses import FileResponse, StreamingResponse
         from fastapi.middleware.cors import CORSMiddleware
         import whisper
         import os
@@ -280,17 +279,30 @@ class TTSService:
                 raise HTTPException(status_code=400, detail="No audio file provided")
             
             try:
+                # Read the audio file bytes
+                # Doesn't work because MediaRecorder doesn't support mimeType: 'audio/wav'
+                # print("Reading audio file bytes...")
+                # audio_bytes = await audio.read()  # Read entire file into memory
+                # audio_stream = io.BytesIO(audio_bytes)
+                # data, samplerate = sf.read(audio_stream)
+                # print("Audio file bytes read successfully")
+                # # Whisper expects a NumPy array in 16-bit float format
+                # if data.dtype != np.float32:
+                #     data = data.astype(np.float32)
+                
                 # Save the audio file temporarily
+                start_time = time.time()
                 temp_dir = tempfile.gettempdir()
                 filepath = os.path.join(temp_dir, audio.filename)
                 
                 with open(filepath, "wb") as buffer:
                     content = await audio.read()
                     buffer.write(content)
-                print("Saved temp audio file to: ", filepath)
-                
+                print(f"Saved temp audio file to: {filepath} in {time.time() - start_time:.5f} seconds")
+
                 # Transcribe the audio using Whisper
                 start_time = time.time()
+                # result = whisper_model.transcribe(data)
                 result = whisper_model.transcribe(filepath)
                 print(f"Transcription took {time.time() - start_time:.2f} seconds")
                 transcribed_text = result["text"].strip()
@@ -301,28 +313,22 @@ class TTSService:
                 
                 # Generate speech using TTSModel
                 start_time = time.time()
-                temp_response_path = os.path.join(temp_dir, "response.wav")
                 wav_bytes = self.generate_speech(response_text)
                 print(f"Speech generation took {time.time() - start_time:.2f} seconds")
                 
-                # Save the generated audio
-                try:
-                    # Write bytes directly to file
-                    with open(temp_response_path, "wb") as f:
-                        f.write(wav_bytes)
-                except Exception as e:
-                    print("Error writing to file: ", e)
+                # Create a BytesIO object for streaming
+                wav_io = io.BytesIO(wav_bytes)
+                wav_io.seek(0)  # Reset to the start of the stream
                 
-                # Clean up the temporary file
-                os.remove(filepath)
-                
-                return FileResponse(
-                    temp_response_path,
+                # Return streaming response
+                return StreamingResponse(
+                    content=wav_io,
                     media_type="audio/wav",
-                    filename="response.wav"
+                    headers={"Content-Disposition": "attachment; filename=response.wav"}
                 )
                     
             except Exception as e:
+                print(f"Error processing audio: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
         
         return web_app
