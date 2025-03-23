@@ -144,35 +144,43 @@ async function processAudio(audioBlob) {
         audioResponse.src = URL.createObjectURL(mediaSource);
         audioResponse.classList.remove('hidden');
 
-        
-        // Start streaming with fetch
-        const response = await fetch(url, {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('Error response:', error);
-            alert('Error processing audio: ' + error);
-            document.getElementById('recordingStatus').textContent = '';
-            return;
-        }
-
-        console.log("Started receiving audio stream");
-
-        const reader = response.body.getReader();
-        let receivedChunks = 0;
 
         mediaSource.addEventListener("sourceopen", async () => {
+            console.log("MediaSource opened");
             const mimeCodec = 'audio/mpeg';
             const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
+            });
+            console.log("Fetch request received");
+    
+            if (!response.ok) {
+                const error = await response.text();
+                console.error('Error response:', error);
+                alert('Error processing audio: ' + error);
+                document.getElementById('recordingStatus').textContent = '';
+                return;
+            }
+    
+            console.log("Started receiving audio stream");
+
+            const reader = response.body.getReader();
+            let receivedChunks = 0;
 
             async function pump() {
                 const { done, value } = await reader.read();
 
                 if (done) {
                     console.log(`Stream complete. Received ${receivedChunks} chunks.`);
+
+                    // Wait for the sourceBuffer to finish updating before calling endOfStream
+                    if (sourceBuffer.updating) {
+                        await new Promise(resolve =>
+                            sourceBuffer.addEventListener("updateend", resolve, { once: true })
+                        );
+                    }
                     mediaSource.endOfStream();
                     document.getElementById('recordingStatus').textContent = '';
                     return;
@@ -209,25 +217,3 @@ async function processAudio(audioBlob) {
         document.getElementById('recordingStatus').textContent = '';
     }
 }
-
-function displayResponse(text, audioBlob = null) {
-    const responseSection = document.getElementById('responseSection');
-    const textResponse = document.getElementById('textResponse');
-    const audioResponse = document.getElementById('audioResponse');
-
-    if (audioBlob) {
-        const audioUrl = URL.createObjectURL(audioBlob);
-        audioResponse.src = audioUrl;
-        audioResponse.classList.remove('hidden');
-        
-        // Show response section with animation
-        responseSection.classList.remove('hidden');
-        
-        // Auto-play the response
-        audioResponse.play().catch(e => {
-            console.log('Auto-play failed:', e);
-        });
-    } else {
-        audioResponse.classList.add('hidden');
-    }
-} 

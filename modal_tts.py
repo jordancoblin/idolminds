@@ -21,7 +21,7 @@ image = (
         # "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
         # "deepspeed==0.10.3",
         "torchaudio",
-        "TTS",
+        "coqui-tts",
         "scipy",
         "jinja2",
         "openai-whisper",
@@ -62,7 +62,7 @@ class TTSService:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_precision = 'half'
         print(f"Using device: {self.device}")
-
+        self.stream_chunk_size = 32000 # ~1 second of audio
         
         # Use the cached model loader function - call it directly
         if not hasattr(self, "model"):
@@ -147,12 +147,45 @@ class TTSService:
             "config": config,
             "reference_audio": reference_audio
         }
-
-    # @modal.method()
-    def generate_speech(self, text: str) -> bytes:
-        """Generate speech from text using the XTTS model."""
+    
+    def split_text_into_chunks(self, text: str, chunk_size: int = 100):
+        """Split text into chunks of approximately the specified size, respecting sentence boundaries.
+        
+        Args:
+            text: The text to split
+            chunk_size: Maximum characters per chunk (approximate)
+            
+        Returns:
+            List of text chunks
+        """
+        import re
+        
+        # Split by sentence boundaries
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        # Group sentences into chunks based on the specified size
+        text_chunks = []
+        current_chunk = ""
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) < chunk_size:
+                current_chunk += " " + sentence if current_chunk else sentence
+            else:
+                if current_chunk:
+                    text_chunks.append(current_chunk)
+                current_chunk = sentence
+        
+        # Add the last chunk if not empty
+        if current_chunk:
+            text_chunks.append(current_chunk)
+            
+        return text_chunks
+    
+    async def generate_speech_stream_custom(self, text: str):
+        """Generate speech from text using the XTTS model and stream the output.
+        This is a custom implementation using model.inference instead of inference_stream.
+        It splits the text into chunks and processes each chunk separately."""
         try:
-            print("We here")
+            print("Starting custom speech generation stream...")
             # Get conditioning latents
             gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
                 audio_path=self.reference_audio,
@@ -160,9 +193,100 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
-            print("now we here")
+            
+            text_chunks = self.split_text_into_chunks(text, chunk_size=50)
+    
+            print(f"Split text into {len(text_chunks)} chunks for processing")
+            print(f"Text chunks: {text_chunks}")
+            
+            # Process each text chunk separately
+            for i, chunk_text in enumerate(text_chunks):
+                print(f"Processing text chunk {i+1}/{len(text_chunks)}: {chunk_text}")
+                
+                # Skip empty chunks
+                if not chunk_text.strip():
+                    continue
+                
+                # Generate speech for this text chunk
+                out = self.model.inference(
+                    text=chunk_text,
+                    language='en',
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=self.config.temperature,
+                    length_penalty=self.config.length_penalty,
+                    repetition_penalty=self.config.repetition_penalty,
+                    top_k=self.config.top_k,
+                    top_p=self.config.top_p,
+                    enable_text_splitting=True  # Still enable the model's internal text splitting
+                )
 
-            print(f"model params dtype: {next(self.model.parameters()).dtype}")
+                # Process the output
+                wav = out["wav"]
+                if isinstance(wav, torch.Tensor):
+                    wav = wav.detach().cpu().numpy()
+
+                # Convert to int16
+                wav = (wav * 32767).astype('int16')
+                
+                # Yield the audio for this text chunk
+                yield wav.tobytes()
+                
+                # Small delay between chunks to simulate real-time generation
+                await asyncio.sleep(0.1)
+            
+            print("Finished custom generation stream")
+
+        except Exception as e:
+            print(f"Error generating speech stream: {str(e)}")
+            raise
+
+    async def generate_speech_stream(self, text: str):
+        """Generate speech from text using the XTTS model and stream the output."""
+        try:
+            print("Starting speech generation stream...")
+            # Get conditioning latents
+            gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
+                audio_path=self.reference_audio,
+                gpt_cond_len=self.config.gpt_cond_len,
+                max_ref_length=self.config.max_ref_len,
+                sound_norm_refs=self.config.sound_norm_refs,
+            )
+
+            stream = self.model.inference_stream(
+                text=text,
+                language='en',
+                gpt_cond_latent=gpt_cond_latent,
+                speaker_embedding=speaker_embedding,
+                stream_chunk_size=self.stream_chunk_size,
+            )
+
+            for chunk in stream:
+                print(f"generated chunk!")
+                if isinstance(chunk, torch.Tensor):
+                    chunk = chunk.detach().cpu().numpy()
+
+                wav = (chunk * 32767).astype("int16")
+                await asyncio.sleep(0)  # Yield to event loop
+                yield wav.tobytes()
+            
+            print("finished generation stream")
+
+        except Exception as e:
+            print(f"Error generating speech stream: {str(e)}")
+            raise
+
+    # @modal.method()
+    def generate_speech(self, text: str) -> bytes:
+        """Generate speech from text using the XTTS model."""
+        try:
+            # Get conditioning latents
+            gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
+                audio_path=self.reference_audio,
+                gpt_cond_len=self.config.gpt_cond_len,
+                max_ref_length=self.config.max_ref_len,
+                sound_norm_refs=self.config.sound_norm_refs,
+            )
             
             # Convert latents to half precision if model is in half precision
             # if self.model_precision == 'half':
@@ -297,38 +421,42 @@ class TTSService:
                 # Generate response to transcribed text
                 start_time = time.time()
                 response_text = await generate_text_response(transcribed_text)
-                print(f"Response generation took {time.time() - start_time:.2f} seconds")
+                print(f"Response text generation took {time.time() - start_time:.2f} seconds")
                 print("Response: ", response_text)
                 
-                # Generate speech using TTSModel
-                start_time = time.time()
-                wav_bytes = self.generate_speech(response_text)
-                print(f"Speech generation took {time.time() - start_time:.2f} seconds")
-                
-                async def stream_mp3_from_wav(wav_bytes, chunk_size=2*8192, delay=0.05):
-                    print("Creating process")
+                async def stream_mp3_from_wav(wav_stream, delay=0.1):
                     process = await asyncio.create_subprocess_exec(
-                        'ffmpeg', '-i', 'pipe:0', '-f', 'mp3', '-b:a', '128k', 'pipe:1',
+                        'ffmpeg',
+                        '-f', 's16le',
+                        '-ar', '24000',
+                        '-ac', '1',
+                        '-i', 'pipe:0',
+                        '-f', 'mp3',
+                        '-b:a', '128k',
+                        'pipe:1',
                         stdin=asyncio.subprocess.PIPE,
                         stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.DEVNULL
+                        stderr=asyncio.subprocess.PIPE
                     )
 
                     async def write_to_stdin():
-                        for i in range(0, len(wav_bytes), chunk_size):
-                            print("Writing to stdin")
-                            chunk = wav_bytes[i:i + chunk_size]
-                            process.stdin.write(chunk)
+                        i = 1
+                        async for wav_chunk in wav_stream:
+                            process.stdin.write(wav_chunk)
                             await process.stdin.drain()
+                            i += 1
                         process.stdin.close()
 
                     async def read_from_stdout():
                         while True:
-                            print("Reading from stdout")
-                            chunk = await process.stdout.read(chunk_size)
+                            chunk = await process.stdout.read(self.stream_chunk_size)
+                            print(f"read chunk of size: {len(chunk)}")
                             if not chunk:
-                                break
-                            await asyncio.sleep(delay)
+                                # Check if the process is still running
+                                if process.returncode is not None:
+                                    break
+                                await asyncio.sleep(delay)
+                                continue
                             yield chunk
 
                     # Start writing in background while reading output
@@ -341,10 +469,13 @@ class TTSService:
                     await process.wait()
                     print("Finished streaming MP3")
 
+                # Generate speech using TTSModel and stream
+                wav_stream = self.generate_speech_stream_custom(response_text)
+                print(f"Speech generation stream started (using custom streamer)")
                 
                 # Return StreamingResponse
                 return StreamingResponse(
-                    stream_mp3_from_wav(wav_bytes),
+                    stream_mp3_from_wav(wav_stream),
                     media_type="audio/mpeg"
                 )
                     
