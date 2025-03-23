@@ -136,14 +136,13 @@ async function processAudio(audioBlob) {
         // Show response section early to prepare for streaming audio
         const responseSection = document.getElementById('responseSection');
         responseSection.classList.remove('hidden');
-        document.getElementById('recordingStatus').textContent = 'Receiving response...';
+        document.getElementById('recordingStatus').textContent = 'Pondering...';
         
         // Set up MediaSource and audio element
         const mediaSource = new MediaSource();
         const audioResponse = document.getElementById('audioResponse');
         audioResponse.src = URL.createObjectURL(mediaSource);
         audioResponse.classList.remove('hidden');
-
 
         mediaSource.addEventListener("sourceopen", async () => {
             console.log("MediaSource opened");
@@ -182,7 +181,6 @@ async function processAudio(audioBlob) {
                         );
                     }
                     mediaSource.endOfStream();
-                    document.getElementById('recordingStatus').textContent = '';
                     return;
                 }
 
@@ -207,8 +205,16 @@ async function processAudio(audioBlob) {
         });
 
         // Auto-play once data starts coming in
-        audioResponse.play().catch((e) => {
+        audioResponse.play().then(() => {
+            document.getElementById('recordingStatus').textContent = '';
+            document.getElementById('micContainer').classList.add('audio-playing');
+        }).catch((e) => {
             console.warn("Audio play failed (user interaction likely required):", e);
+        });
+
+        // Remove the 'audio-playing' class when audio ends
+        audioResponse.addEventListener('ended', () => {
+            document.getElementById('micContainer').classList.remove('audio-playing');
         });
 
     } catch (error) {
