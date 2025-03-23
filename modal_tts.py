@@ -3,7 +3,7 @@ import modal
 from common import app
 
 # Necessary to use an image with CUDA toolkit installed for DeepSpeed
-# TODO: it is super slow loading the CUDA image. Perhaps we can just install the CUDA runtime manually?
+# TODO: it is super slow loading the CUDA image. Perhaps we can just install the CUDA runtime manually? https://modal.com/docs/guide/cuda
 cuda_version = "12.4.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
@@ -18,8 +18,7 @@ image = (
         "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
         "torch",
-        # "deepspeed", # TODO: may need to install CUDA runtime manually: https://modal.com/docs/guide/cuda
-        # "deepspeed==0.10.3",
+        # "deepspeed",
         "torchaudio",
         "coqui-tts",
         "scipy",
@@ -49,7 +48,7 @@ volume = modal.Volume.from_name(
     # gpu=modal.gpu.T4(), 
     gpu="A10G",
     image=image,
-    scaledown_window=180,
+    scaledown_window=300,
     timeout=600,
     volumes={"/models": volume},
     secrets=[modal.Secret.from_name("openai-secret")],
@@ -59,10 +58,10 @@ class TTSService:
     @modal.enter()
     def enter(self):
         print("Initializing TTSService...")
+        start_time = time.time()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model_precision = 'half'
         print(f"Using device: {self.device}")
-        self.stream_chunk_size = 32000 # ~1 second of audio
+        self.stream_chunk_size = 16000 # ~1 second of audio
         
         # Use the cached model loader function - call it directly
         if not hasattr(self, "model"):
@@ -75,7 +74,7 @@ class TTSService:
         else:
             print("TTSService already initialized")
         
-        print("TTSService initialized")
+        print("TTSService initialized in ", time.time() - start_time, " seconds")
     
     def load_xtts_model(self, device):
         """Load the XTTS model with caching for faster startup"""
@@ -90,7 +89,7 @@ class TTSService:
 
         # Ensure the correct full paths inside the volume
         local_model_dir = f"/models/alan_watts"
-        os.makedirs(local_model_dir, exist_ok=True)  # Ensure the directory exists
+        # os.makedirs(local_model_dir, exist_ok=True)  # Ensure the directory exists
         
         # Check if files exist before downloading
         files_to_download = []
@@ -136,9 +135,6 @@ class TTSService:
         if device == "cuda":
             model.cuda()
 
-        # TODO: this is not working with DeepSpeed. Currently failing at self.model.get_conditioning_latents()
-        # if self.model_precision == 'half':
-        #     model = model.half()
         model.to(device)
         
         print("XTTS model loaded successfully")
@@ -193,6 +189,7 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
+            print("got conditioning latents")
             
             text_chunks = self.split_text_into_chunks(text, chunk_size=50)
     
@@ -241,41 +238,6 @@ class TTSService:
             print(f"Error generating speech stream: {str(e)}")
             raise
 
-    async def generate_speech_stream(self, text: str):
-        """Generate speech from text using the XTTS model and stream the output."""
-        try:
-            print("Starting speech generation stream...")
-            # Get conditioning latents
-            gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
-                audio_path=self.reference_audio,
-                gpt_cond_len=self.config.gpt_cond_len,
-                max_ref_length=self.config.max_ref_len,
-                sound_norm_refs=self.config.sound_norm_refs,
-            )
-
-            stream = self.model.inference_stream(
-                text=text,
-                language='en',
-                gpt_cond_latent=gpt_cond_latent,
-                speaker_embedding=speaker_embedding,
-                stream_chunk_size=self.stream_chunk_size,
-            )
-
-            for chunk in stream:
-                print(f"generated chunk!")
-                if isinstance(chunk, torch.Tensor):
-                    chunk = chunk.detach().cpu().numpy()
-
-                wav = (chunk * 32767).astype("int16")
-                await asyncio.sleep(0)  # Yield to event loop
-                yield wav.tobytes()
-            
-            print("finished generation stream")
-
-        except Exception as e:
-            print(f"Error generating speech stream: {str(e)}")
-            raise
-
     # @modal.method()
     def generate_speech(self, text: str) -> bytes:
         """Generate speech from text using the XTTS model."""
@@ -287,13 +249,8 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
+            print("got conditioning latents")
             
-            # Convert latents to half precision if model is in half precision
-            # if self.model_precision == 'half':
-            #     print("Converting latents to half precision")
-            #     gpt_cond_latent = gpt_cond_latent.half()
-            #     speaker_embedding = speaker_embedding.half()
-
             # TODO: add explicit attention mask?
             # Generate speech
             out = self.model.inference(
@@ -388,10 +345,11 @@ class TTSService:
             """Endpoint to warm up the GPU when the webpage is loaded"""
             if self.device == "cuda":
                 try:
+                    start_time = time.time()
                     print("Warming up GPU from web request...")
                     warmup_text = "Hello, I'm warming up the GPU from a web request."
                     _ = self.generate_speech(warmup_text)
-                    print("GPU warmup from web request completed successfully")
+                    print("GPU warmup from web request completed successfully, took ", time.time() - start_time, " seconds")
                     return {"status": "success", "message": "GPU warmup completed"}
                 except Exception as e:
                     print(f"GPU warmup from web request failed: {str(e)}")
@@ -423,6 +381,8 @@ class TTSService:
                 response_text = await generate_text_response(transcribed_text)
                 print(f"Response text generation took {time.time() - start_time:.2f} seconds")
                 print("Response: ", response_text)
+
+                print("Stream chunk size: ", self.stream_chunk_size)
                 
                 async def stream_mp3_from_wav(wav_stream, delay=0.1):
                     process = await asyncio.create_subprocess_exec(
@@ -440,24 +400,29 @@ class TTSService:
                     )
 
                     async def write_to_stdin():
-                        i = 1
-                        async for wav_chunk in wav_stream:
-                            process.stdin.write(wav_chunk)
-                            await process.stdin.drain()
-                            i += 1
-                        process.stdin.close()
+                        try:
+                            async for wav_chunk in wav_stream:
+                                process.stdin.write(wav_chunk)
+                                await process.stdin.drain()
+                            process.stdin.close()
+                        except Exception as e:
+                            print(f"Error in write_to_stdin: {e}")
+                            process.stdin.close()  # Close stdin to signal EOF to ffmpeg
+                            raise
 
                     async def read_from_stdout():
-                        while True:
-                            chunk = await process.stdout.read(self.stream_chunk_size)
-                            print(f"read chunk of size: {len(chunk)}")
-                            if not chunk:
-                                # Check if the process is still running
-                                if process.returncode is not None:
-                                    break
-                                await asyncio.sleep(delay)
-                                continue
-                            yield chunk
+                        try:
+                            while True:
+                                chunk = await process.stdout.read(self.stream_chunk_size)
+                                if not chunk:
+                                    if process.returncode is not None:
+                                        break
+                                    await asyncio.sleep(delay)
+                                    continue
+                                yield chunk
+                        except Exception as e:
+                            print(f"Error in read_from_stdout: {e}")
+                            raise
 
                     # Start writing in background while reading output
                     writer_task = asyncio.create_task(write_to_stdin())
@@ -484,30 +449,3 @@ class TTSService:
                 raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
         
         return web_app
-
-# @app.local_entrypoint()
-# def main():
-#     import time
-
-#     # Sample text to convert to speech
-#     text = "Hello, this is a test of the text to speech system."
-
-#     service = TTSService()
-
-#     # TODO: This first speech generation takes a while - I'm guessing
-#     # it's running enter() -> how to get this to load on startup?
-#     print("Generating speech...")
-#     start = time.time()
-#     audio_bytes = service.generate_speech.remote(text)
-#     end = time.time()
-#     print(f"Speech generation took: {end - start} seconds")
-
-#     print("Generating speech...")
-#     start = time.time()
-#     audio_bytes = service.generate_speech.remote(text)
-#     end = time.time()
-#     print(f"Speech generation # 2 took: {end - start} seconds")
-    
-#     # Save to volume using remote function
-#     saved_path = service.save_to_volume.remote(audio_bytes, "modal_tts_output.wav")
-#     print(f"Audio saved to {saved_path}")

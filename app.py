@@ -16,7 +16,7 @@ image = modal.Image.debian_slim(python_version="3.10").pip_install(
 ).add_local_dir(static_path, remote_path="/assets")
 
 @app.function(
-    container_idle_timeout=600,
+    scaledown_window=600,
     timeout=600,
     allow_concurrent_inputs=100,
     image=image,
