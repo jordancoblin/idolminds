@@ -2,8 +2,20 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 64px;
     font-weight: 600;
-    color: #F5F5DC; /* soft white */
+    color: #F5F5F5; /* Updated to match light text color */
     letter-spacing: 1px;
+}
+
+/* Styling for the warming-up title */
+.warming-up-title {
+    opacity: 1;
+    z-index: 20;
+    margin-bottom: 2rem;
+}
+
+/* Hide the main title when warming up overlay is visible */
+.warming-up-overlay:not(.hidden) + .container .main-title {
+    display: none;
 }
 
 .recording {
@@ -33,7 +45,7 @@
     border-radius: 50%;
     overflow: hidden;
     padding: 0;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .mic-button:hover {
@@ -49,7 +61,7 @@
 }
 
 .recording .mic-button {
-    background-color: #98DFAF;
+    background-color: #9D71FF; /* Updated to lighter purple */
     transform: scale(1.05);
 }
 
@@ -62,7 +74,7 @@
     width: 120px;
     height: 120px;
     border-radius: 50%;
-    background-color: #5FB49C;
+    background-color: #8A56FF; /* Updated to purple accent */
     opacity: 0;
     z-index: 1;
 }
@@ -86,11 +98,11 @@
 audio {
     height: 40px;
     border-radius: 20px;
-    background-color: #5FB49C;
+    background-color: #8A56FF; /* Updated to purple accent */
 }
 
 audio::-webkit-media-controls-panel {
-    background-color: #5FB49C;
+    background-color: #8A56FF; /* Updated to purple accent */
 }
 
 audio::-webkit-media-controls-current-time-display,
@@ -126,7 +138,7 @@ audio::-webkit-media-controls-time-remaining-display {
 }
 
 .warming-up .mic-button {
-    background-color: rgba(95, 180, 156, 0.7);
+    background-color: rgba(138, 86, 255, 0.7); /* Updated to semi-transparent purple */
     width: 100px;
     height: 100px;
 }
@@ -142,7 +154,7 @@ audio::-webkit-media-controls-time-remaining-display {
 .warming-up .mic-ripple {
     animation: warmup-pulse 1.5s infinite;
     opacity: 0.3;
-    background-color: #5FB49C;
+    background-color: #8A56FF; /* Updated to purple accent */
 }
 
 @keyframes warmup-pulse {
@@ -172,7 +184,7 @@ audio::-webkit-media-controls-time-remaining-display {
 .ready .mic-button {
     width: 120px;
     height: 120px;
-    background-color: #5FB49C;
+    background-color: #8A56FF; /* Updated to purple accent */
     overflow: hidden;
 }
 
@@ -186,7 +198,7 @@ audio::-webkit-media-controls-time-remaining-display {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background-color: rgba(65, 66, 136, 0.9);
+    background-color: rgba(15, 15, 26, 0.95); /* Updated to match dark background */
     z-index: 10;
     transition: opacity 0.5s ease;
 }
@@ -196,11 +208,17 @@ audio::-webkit-media-controls-time-remaining-display {
     pointer-events: none;
 }
 
+/* Hide spinner when overlay is hidden or add 'no-spinner' class */
+.warming-up-overlay.hidden .loading-spinner,
+.warming-up-overlay.no-spinner .loading-spinner {
+    display: none;
+}
+
 .loading-spinner {
     width: 60px;
     height: 60px;
-    border: 5px solid #5FB49C;
-    border-top-color: #98DFAF;
+    border: 5px solid #9D71FF; /* Updated to lighter purple */
+    border-top-color: #8A56FF; /* Updated to purple accent */
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 16px;

@@ -26,7 +26,7 @@ const getTTSServiceURL = () => {
 // Function to warm up the GPU when the page loads
 async function warmupGPU() {
     try {
-        // Show warming up UI
+        // Show warming up UI with IdolMinds title, spinner and text
         document.getElementById('warmingUpOverlay').classList.remove('hidden');
         document.getElementById('micContainer').classList.add('warming-up');
         document.getElementById('recordButton').disabled = true;
@@ -70,7 +70,7 @@ async function warmupGPU() {
 
 // Call warmup when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI
+    // Initialize UI - show IdolMinds title with spinner and text during warm-up
     document.getElementById('warmingUpOverlay').classList.remove('hidden');
     
     // Start warmup
