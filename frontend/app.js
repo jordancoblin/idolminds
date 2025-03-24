@@ -121,105 +121,188 @@ async function toggleRecording() {
     }
 }
 
+// async function processAudio(audioBlob) {
+//     console.log("Processing audio...");
+//     const formData = new FormData();
+//     formData.append('audio', audioBlob, 'recording.wav'); // Add filename to help the server
+
+//     try {
+//         // Get the base URL for the TTSService
+//         const baseURL = getTTSServiceURL();
+//         const url = `${baseURL}/process-audio`;
+        
+//         console.log(`Sending request to: ${url}`);
+        
+//         // Show response section early to prepare for streaming audio
+//         const responseSection = document.getElementById('responseSection');
+//         responseSection.classList.remove('hidden');
+//         document.getElementById('recordingStatus').textContent = 'Pondering...';
+        
+//         // Set up MediaSource and audio element
+//         const mediaSource = new MediaSource();
+//         const audioResponse = document.getElementById('audioResponse');
+//         audioResponse.src = URL.createObjectURL(mediaSource);
+//         audioResponse.classList.remove('hidden');
+
+//         mediaSource.addEventListener("sourceopen", async () => {
+//             console.log("MediaSource opened");
+//             const mimeCodec = 'audio/mpeg';
+//             const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+
+//             const response = await fetch(url, {
+//                 method: 'POST',
+//                 body: formData,
+//             });
+//             console.log("Fetch request received");
+    
+//             if (!response.ok) {
+//                 const error = await response.text();
+//                 console.error('Error response:', error);
+//                 alert('Error processing audio: ' + error);
+//                 document.getElementById('recordingStatus').textContent = '';
+//                 return;
+//             }
+    
+//             console.log("Started receiving audio stream");
+
+//             const reader = response.body.getReader();
+//             let receivedChunks = 0;
+
+//             async function pump() {
+//                 const { done, value } = await reader.read();
+
+//                 if (done) {
+//                     console.log(`Stream complete. Received ${receivedChunks} chunks.`);
+
+//                     // Wait for the sourceBuffer to finish updating before calling endOfStream
+//                     if (sourceBuffer.updating) {
+//                         await new Promise(resolve =>
+//                             sourceBuffer.addEventListener("updateend", resolve, { once: true })
+//                         );
+//                     }
+//                     mediaSource.endOfStream();
+//                     return;
+//                 }
+
+//                 receivedChunks++;
+//                 console.log(`Received chunk ${receivedChunks}: ${value.length} bytes`);
+
+//                 try {
+//                     if (sourceBuffer.updating) {
+//                         await new Promise(resolve =>
+//                             sourceBuffer.addEventListener("updateend", resolve, { once: true })
+//                         );
+//                     }
+//                     sourceBuffer.appendBuffer(value);
+//                 } catch (error) {
+//                     console.error("Error appending audio chunk:", error);
+//                 }
+
+//                 pump(); // Continue pumping
+//             }
+
+//             pump();
+//         });
+
+//         // Auto-play once data starts coming in
+//         audioResponse.play().then(() => {
+//             document.getElementById('recordingStatus').textContent = '';
+//             document.getElementById('micContainer').classList.add('audio-playing');
+//         }).catch((e) => {
+//             console.warn("Audio play failed (user interaction likely required):", e);
+//         });
+
+//         // Remove the 'audio-playing' class when audio ends
+//         audioResponse.addEventListener('ended', () => {
+//             document.getElementById('micContainer').classList.remove('audio-playing');
+//         });
+
+//     } catch (error) {
+//         console.error('Error:', error);
+//         alert('An error occurred while processing your request.');
+//         document.getElementById('recordingStatus').textContent = '';
+//     }
+// }
+
 async function processAudio(audioBlob) {
     console.log("Processing audio...");
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'recording.wav'); // Add filename to help the server
+    formData.append('audio', audioBlob, 'recording.wav');
 
     try {
-        // Get the base URL for the TTSService
         const baseURL = getTTSServiceURL();
-        const url = `${baseURL}/process-audio`;
-        
-        console.log(`Sending request to: ${url}`);
-        
-        // Show response section early to prepare for streaming audio
+        const processURL = `${baseURL}/process-audio`;
+
+        // Show response section while processing
         const responseSection = document.getElementById('responseSection');
         responseSection.classList.remove('hidden');
-        document.getElementById('recordingStatus').textContent = 'Pondering...';
-        
-        // Set up MediaSource and audio element
-        const mediaSource = new MediaSource();
+        document.getElementById('recordingStatus').textContent = 'Philosophizing...';
+
+        console.log(`Sending audio to: ${processURL}`);
+        const response = await fetch(processURL, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error('Server error: ' + error);
+        }
+
+        const { session_id } = await response.json();
+        console.log("Session ID:", session_id);
+
+        const streamURL = `${baseURL}/stream-audio/${session_id}`;
+        console.log("Streaming audio from:", streamURL);
+
+        // Set up audio element to stream the result
         const audioResponse = document.getElementById('audioResponse');
-        audioResponse.src = URL.createObjectURL(mediaSource);
+        audioResponse.src = streamURL;
         audioResponse.classList.remove('hidden');
 
-        mediaSource.addEventListener("sourceopen", async () => {
-            console.log("MediaSource opened");
-            const mimeCodec = 'audio/mpeg';
-            const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
-
-            const response = await fetch(url, {
-                method: 'POST',
-                body: formData,
-            });
-            console.log("Fetch request received");
-    
-            if (!response.ok) {
-                const error = await response.text();
-                console.error('Error response:', error);
-                alert('Error processing audio: ' + error);
-                document.getElementById('recordingStatus').textContent = '';
-                return;
-            }
-    
-            console.log("Started receiving audio stream");
-
-            const reader = response.body.getReader();
-            let receivedChunks = 0;
-
-            async function pump() {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    console.log(`Stream complete. Received ${receivedChunks} chunks.`);
-
-                    // Wait for the sourceBuffer to finish updating before calling endOfStream
-                    if (sourceBuffer.updating) {
-                        await new Promise(resolve =>
-                            sourceBuffer.addEventListener("updateend", resolve, { once: true })
-                        );
-                    }
-                    mediaSource.endOfStream();
-                    return;
-                }
-
-                receivedChunks++;
-                console.log(`Received chunk ${receivedChunks}: ${value.length} bytes`);
-
-                try {
-                    if (sourceBuffer.updating) {
-                        await new Promise(resolve =>
-                            sourceBuffer.addEventListener("updateend", resolve, { once: true })
-                        );
-                    }
-                    sourceBuffer.appendBuffer(value);
-                } catch (error) {
-                    console.error("Error appending audio chunk:", error);
-                }
-
-                pump(); // Continue pumping
-            }
-
-            pump();
-        });
-
-        // Auto-play once data starts coming in
-        audioResponse.play().then(() => {
+        // Attempt autoplay
+        try {
+            await audioResponse.play();
             document.getElementById('recordingStatus').textContent = '';
             document.getElementById('micContainer').classList.add('audio-playing');
-        }).catch((e) => {
-            console.warn("Audio play failed (user interaction likely required):", e);
-        });
 
-        // Remove the 'audio-playing' class when audio ends
-        audioResponse.addEventListener('ended', () => {
-            document.getElementById('micContainer').classList.remove('audio-playing');
-        });
+            audioResponse.addEventListener('ended', () => {
+                document.getElementById('micContainer').classList.remove('audio-playing');
+            });
+        } catch (err) {
+            console.warn("Autoplay blocked, waiting for user interaction:", err);
+
+            // Show tap-to-play overlay
+            const listenButton = document.getElementById('tapToListenButton');
+            listenButton.classList.remove('hidden');
+            document.getElementById('recordingStatus').textContent = '';
+
+            const resumePlayback = async () => {
+                try {
+                    await audioResponse.play();
+                    listenButton.classList.add('hidden');
+                    document.getElementById('micContainer').classList.add('audio-playing');
+
+                    audioResponse.addEventListener('ended', () => {
+                        document.getElementById('micContainer').classList.remove('audio-playing');
+                    });
+                } catch (e) {
+                    console.error("Playback still failed:", e);
+                    alert("Audio playback failed. Please try again.");
+                }
+            };
+
+            listenButton.addEventListener('click', resumePlayback, { once: true });
+        }
 
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error processing audio:', error);
         alert('An error occurred while processing your request.');
         document.getElementById('recordingStatus').textContent = '';
     }
 }
+
+
+// An error occurred while processing your request.
+
+// The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.

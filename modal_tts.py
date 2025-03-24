@@ -39,6 +39,8 @@ with image.imports():
     import io
     import scipy.io.wavfile
     import asyncio
+    import tempfile
+    import uuid
 
 volume = modal.Volume.from_name(
     "tts-model-storage", create_if_missing=True
@@ -62,7 +64,10 @@ class TTSService:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
         self.stream_chunk_size = 16000 # ~1 second of audio
-        
+        self.temp_audio_dir = os.path.join(tempfile.gettempdir(), "tts_stream_audio")
+        os.makedirs(self.temp_audio_dir, exist_ok=True)
+
+        # Create a temporary directory for audio files
         # Use the cached model loader function - call it directly
         if not hasattr(self, "model"):
             model_dict = self.load_xtts_model(self.device)
@@ -189,7 +194,6 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
-            print("got conditioning latents")
             
             text_chunks = self.split_text_into_chunks(text, chunk_size=50)
     
@@ -230,6 +234,7 @@ class TTSService:
                 yield wav.tobytes()
                 
                 # Small delay between chunks to simulate real-time generation
+                # TODO: is this necessary?
                 await asyncio.sleep(0.1)
             
             print("Finished custom generation stream")
@@ -357,95 +362,156 @@ class TTSService:
             else:
                 return {"status": "skipped", "message": "Not running on GPU, warmup skipped"}
 
+        # @web_app.post("/process-audio")
+        # async def process_audio(audio: UploadFile = File(...)):
+        #     if not audio:
+        #         raise HTTPException(status_code=400, detail="No audio file provided")
+            
+        #     try:                
+        #         # Save the audio file temporarily
+        #         temp_dir = tempfile.gettempdir()
+        #         filepath = os.path.join(temp_dir, audio.filename)
+        #         with open(filepath, "wb") as buffer:
+        #             buffer.write(await audio.read())
+
+        #         # Transcribe the audio using Whisper
+        #         start_time = time.time()
+        #         # result = whisper_model.transcribe(data)
+        #         result = whisper_model.transcribe(filepath)
+        #         transcribed_text = result["text"].strip()
+        #         print(f"Transcription took {time.time() - start_time:.2f} seconds")
+                
+        #         # Generate response to transcribed text
+        #         start_time = time.time()
+        #         response_text = await generate_text_response(transcribed_text)
+        #         print(f"Response text generation took {time.time() - start_time:.2f} seconds")
+        #         print("Response: ", response_text)
+
+        #         print("Stream chunk size: ", self.stream_chunk_size)
+                
+        #         async def stream_mp3_from_wav(wav_stream, delay=0.1):
+        #             process = await asyncio.create_subprocess_exec(
+        #                 'ffmpeg',
+        #                 '-f', 's16le',
+        #                 '-ar', '24000',
+        #                 '-ac', '1',
+        #                 '-i', 'pipe:0',
+        #                 '-f', 'mp3',
+        #                 '-b:a', '128k',
+        #                 'pipe:1',
+        #                 stdin=asyncio.subprocess.PIPE,
+        #                 stdout=asyncio.subprocess.PIPE,
+        #                 stderr=asyncio.subprocess.PIPE
+        #             )
+
+        #             async def write_to_stdin():
+        #                 try:
+        #                     async for wav_chunk in wav_stream:
+        #                         process.stdin.write(wav_chunk)
+        #                         await process.stdin.drain()
+        #                     process.stdin.close()
+        #                 except Exception as e:
+        #                     print(f"Error in write_to_stdin: {e}")
+        #                     process.stdin.close()  # Close stdin to signal EOF to ffmpeg
+        #                     raise
+
+        #             async def read_from_stdout():
+        #                 try:
+        #                     while True:
+        #                         chunk = await process.stdout.read(self.stream_chunk_size)
+        #                         if not chunk:
+        #                             if process.returncode is not None:
+        #                                 break
+        #                             await asyncio.sleep(delay)
+        #                             continue
+        #                         yield chunk
+        #                 except Exception as e:
+        #                     print(f"Error in read_from_stdout: {e}")
+        #                     raise
+
+        #             # Start writing in background while reading output
+        #             writer_task = asyncio.create_task(write_to_stdin())
+
+        #             async for chunk in read_from_stdout():
+        #                 yield chunk
+
+        #             await writer_task
+        #             await process.wait()
+        #             print("Finished streaming MP3")
+
+        #         # Generate speech using TTSModel and stream
+        #         wav_stream = self.generate_speech_stream_custom(response_text)
+        #         print(f"Speech generation stream started (using custom streamer)")
+                
+        #         # Return StreamingResponse
+        #         return StreamingResponse(
+        #             stream_mp3_from_wav(wav_stream),
+        #             media_type="audio/mpeg"
+        #         )
+                    
+        #     except Exception as e:
+        #         print(f"Error processing audio: {str(e)}")
+        #         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
         @web_app.post("/process-audio")
         async def process_audio(audio: UploadFile = File(...)):
             if not audio:
                 raise HTTPException(status_code=400, detail="No audio file provided")
-            
-            try:                
-                # Save the audio file temporarily
-                temp_dir = tempfile.gettempdir()
-                filepath = os.path.join(temp_dir, audio.filename)
-                with open(filepath, "wb") as buffer:
-                    buffer.write(await audio.read())
 
-                # Transcribe the audio using Whisper
-                start_time = time.time()
-                # result = whisper_model.transcribe(data)
-                result = whisper_model.transcribe(filepath)
-                transcribed_text = result["text"].strip()
-                print(f"Transcription took {time.time() - start_time:.2f} seconds")
-                
-                # Generate response to transcribed text
-                start_time = time.time()
-                response_text = await generate_text_response(transcribed_text)
-                print(f"Response text generation took {time.time() - start_time:.2f} seconds")
-                print("Response: ", response_text)
+            try:
+                # Save uploaded audio temporarily
+                input_path = os.path.join(self.temp_audio_dir, f"input_{uuid.uuid4().hex}.wav")
+                with open(input_path, "wb") as f:
+                    f.write(await audio.read())
 
-                print("Stream chunk size: ", self.stream_chunk_size)
-                
-                async def stream_mp3_from_wav(wav_stream, delay=0.1):
-                    process = await asyncio.create_subprocess_exec(
-                        'ffmpeg',
-                        '-f', 's16le',
-                        '-ar', '24000',
-                        '-ac', '1',
-                        '-i', 'pipe:0',
-                        '-f', 'mp3',
-                        '-b:a', '128k',
-                        'pipe:1',
-                        stdin=asyncio.subprocess.PIPE,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
+                # Transcribe
+                transcribed = whisper_model.transcribe(input_path)["text"].strip()
+                print("Transcribed:", transcribed)
 
-                    async def write_to_stdin():
-                        try:
-                            async for wav_chunk in wav_stream:
-                                process.stdin.write(wav_chunk)
-                                await process.stdin.drain()
-                            process.stdin.close()
-                        except Exception as e:
-                            print(f"Error in write_to_stdin: {e}")
-                            process.stdin.close()  # Close stdin to signal EOF to ffmpeg
-                            raise
+                # Generate text reply
+                response_text = await generate_text_response(transcribed)
+                print("Response:", response_text)
 
-                    async def read_from_stdout():
-                        try:
-                            while True:
-                                chunk = await process.stdout.read(self.stream_chunk_size)
-                                if not chunk:
-                                    if process.returncode is not None:
-                                        break
-                                    await asyncio.sleep(delay)
-                                    continue
-                                yield chunk
-                        except Exception as e:
-                            print(f"Error in read_from_stdout: {e}")
-                            raise
+                # Generate audio stream from TTS
+                wav_stream = self.generate_speech_stream_custom(response_text)
 
-                    # Start writing in background while reading output
-                    writer_task = asyncio.create_task(write_to_stdin())
+                # Set output path for MP3
+                session_id = uuid.uuid4().hex
+                output_mp3_path = os.path.join(self.temp_audio_dir, f"{session_id}.mp3")
 
-                    async for chunk in read_from_stdout():
+                # Run ffmpeg and write MP3 to disk
+                process = await asyncio.create_subprocess_exec(
+                    'ffmpeg', '-f', 's16le', '-ar', '24000', '-ac', '1', '-i', 'pipe:0',
+                    '-f', 'mp3', '-b:a', '128k', output_mp3_path,
+                    stdin=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+
+                async for chunk in wav_stream:
+                    process.stdin.write(chunk)
+                    await process.stdin.drain()
+                process.stdin.close()
+                await process.wait()
+                print(f"Audio written to {output_mp3_path}")
+
+                return {"session_id": session_id}
+
+            except Exception as e:
+                print("Error:", e)
+                raise HTTPException(status_code=500, detail=str(e))
+
+
+        @web_app.get("/stream-audio/{session_id}")
+        async def stream_audio(session_id: str):
+            mp3_path = os.path.join(self.temp_audio_dir, f"{session_id}.mp3")
+            if not os.path.exists(mp3_path):
+                raise HTTPException(status_code=404, detail="Audio not found")
+
+            def iter_file():
+                with open(mp3_path, "rb") as f:
+                    while chunk := f.read(self.stream_chunk_size):
                         yield chunk
 
-                    await writer_task
-                    await process.wait()
-                    print("Finished streaming MP3")
-
-                # Generate speech using TTSModel and stream
-                wav_stream = self.generate_speech_stream_custom(response_text)
-                print(f"Speech generation stream started (using custom streamer)")
-                
-                # Return StreamingResponse
-                return StreamingResponse(
-                    stream_mp3_from_wav(wav_stream),
-                    media_type="audio/mpeg"
-                )
-                    
-            except Exception as e:
-                print(f"Error processing audio: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+            return StreamingResponse(iter_file(), media_type="audio/mpeg")
         
         return web_app
