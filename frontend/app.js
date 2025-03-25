@@ -4,6 +4,10 @@ let currentRecorder = null;
 let recorderStream = null;
 let recorderReleaseTimeout = null;
 
+function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
 // Get the TTSService URL based on current domain
 const getTTSServiceURL = () => {
     // Get the current URL
@@ -99,8 +103,13 @@ async function toggleRecording() {
     const status = document.getElementById('recordingStatus');
 
     if (!isRecording) {
-        // This should probably be called with await, but I want to avoid adding UI latency here.
-        startRecording();
+        if (isIOS()) {
+            // Avoid adding UI latency here, since we need to create a new stream each time.
+            console.log("Starting recording on iOS...");
+            startRecording();
+        } else {
+            await startRecording();
+        }
         isRecording = true;
         micContainer.classList.add('recording');
         status.textContent = 'Listening...';
@@ -120,12 +129,10 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
-    // const { mediaRecorder, stream } = await createRecorder();
-    if (!recorderStream || !recorderStream.active) {
+    if (isIOS() || !recorderStream) {
         // Would love to call this immediately after the stream is released, so that it's ready for next recording.
         // However it seems this doesn't play well with Safari on iOS. Possibly because the old stream is still being reused.
         // Seems to be safe here, because it's triggered by a user gesture.
-        // As a workaround, we'll call startRecording without await, so that UI is unblocked.
         await initRecorderStream();
     }
     const mediaRecorder = new MediaRecorder(recorderStream);
@@ -153,9 +160,12 @@ async function startRecording() {
 
         processAudio(audioBlob);
 
-        // Stop the current stream and initialize a new one for next recording
-        // This ensures we'll have a stream ready when user clicks record again
-        releaseRecorderStream()
+        releaseRecorderStream();
+
+        // On iOS, we can't create a usable stream here in advance, possibly because of the browser reusing the old stream.
+        if (!isIOS()) {
+            initRecorderStream();
+        }
     };
 
     mediaRecorder.onerror = (event) => {
@@ -256,7 +266,6 @@ function releaseRecorderStream() {
     if (recorderStream) {
         console.log("Releasing recorder stream...");
         recorderStream.getTracks().forEach(track => track.stop());
-        console.log("stream track state: ", recorderStream.getAudioTracks()[0].readyState); // → "ended"
         recorderStream = null;
     }
 }
