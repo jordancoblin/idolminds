@@ -254,7 +254,6 @@ class TTSService:
                 max_ref_length=self.config.max_ref_len,
                 sound_norm_refs=self.config.sound_norm_refs,
             )
-            print("got conditioning latents")
             
             # TODO: add explicit attention mask?
             # Generate speech
@@ -460,9 +459,13 @@ class TTSService:
 
             try:
                 # Save uploaded audio temporarily
+                contents = await audio.read()
+                print(f"Audio content type: {audio.content_type}, filename: {audio.filename}, size: {len(contents)} bytes")
+
                 input_path = os.path.join(self.temp_audio_dir, f"input_{uuid.uuid4().hex}.wav")
+                print("writing input audio to ", input_path)
                 with open(input_path, "wb") as f:
-                    f.write(await audio.read())
+                    f.write(contents)
 
                 # Transcribe
                 transcribed = whisper_model.transcribe(input_path)["text"].strip()

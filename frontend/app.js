@@ -1,7 +1,8 @@
-let mediaRecorder;
-let audioChunks = [];
 let isRecording = false;
 let isReady = false;
+let currentRecorder = null;
+let recorderStream = null;
+let recorderReleaseTimeout = null;
 
 // Get the TTSService URL based on current domain
 const getTTSServiceURL = () => {
@@ -75,154 +76,103 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Start warmup
     warmupGPU();
+    initRecorderStream(); // Initialize recorder stream when page loads
 });
 
-async function setupRecorder() {
-    console.log("Setting up recorder...");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-
-    mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-    };
-
-    mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        processAudio(audioBlob);
-        audioChunks = [];
-    };
+// Initialize recorder stream to be ready for recording
+async function initRecorderStream() {
+    if (recorderStream) {
+        console.log("Recorder stream already initialized");
+        return;
+    }
+    recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    tracks = recorderStream.getTracks();
+    console.log("Initialized recorder stream: ", recorderStream);
+    console.log("Tracks: ", tracks);
 }
 
 async function toggleRecording() {
-    if (!isReady) return; // Prevent recording if not ready
-    
-    if (!mediaRecorder) {
-        await setupRecorder();
-    }
+    if (!isReady) return;
 
     const button = document.getElementById('recordButton');
     const micContainer = button.closest('.mic-container');
     const status = document.getElementById('recordingStatus');
 
     if (!isRecording) {
-        mediaRecorder.start();
+        // This should probably be called with await, but I want to avoid adding UI latency here.
+        startRecording();
         isRecording = true;
         micContainer.classList.add('recording');
         status.textContent = 'Listening...';
-        
-        // Hide previous response when starting new recording
+
+        // Hide previous response
         const responseSection = document.getElementById('responseSection');
         responseSection.classList.add('hidden');
     } else {
-        mediaRecorder.stop();
+        // Stop recording
+        stopRecording();
         isRecording = false;
         micContainer.classList.remove('recording');
         status.textContent = 'Processing...';
+
+        // scheduleReleaseRecorder();
     }
 }
 
-// async function processAudio(audioBlob) {
-//     console.log("Processing audio...");
-//     const formData = new FormData();
-//     formData.append('audio', audioBlob, 'recording.wav'); // Add filename to help the server
+async function startRecording() {
+    // const { mediaRecorder, stream } = await createRecorder();
+    if (!recorderStream || !recorderStream.active) {
+        // Would love to call this immediately after the stream is released, so that it's ready for next recording.
+        // However it seems this doesn't play well with Safari on iOS. Possibly because the old stream is still being reused.
+        // Seems to be safe here, because it's triggered by a user gesture.
+        // As a workaround, we'll call startRecording without await, so that UI is unblocked.
+        await initRecorderStream();
+    }
+    const mediaRecorder = new MediaRecorder(recorderStream);
+    console.log("MediaRecorder initialized:", mediaRecorder);
+    let audioChunks = [];
 
-//     try {
-//         // Get the base URL for the TTSService
-//         const baseURL = getTTSServiceURL();
-//         const url = `${baseURL}/process-audio`;
-        
-//         console.log(`Sending request to: ${url}`);
-        
-//         // Show response section early to prepare for streaming audio
-//         const responseSection = document.getElementById('responseSection');
-//         responseSection.classList.remove('hidden');
-//         document.getElementById('recordingStatus').textContent = 'Pondering...';
-        
-//         // Set up MediaSource and audio element
-//         const mediaSource = new MediaSource();
-//         const audioResponse = document.getElementById('audioResponse');
-//         audioResponse.src = URL.createObjectURL(mediaSource);
-//         audioResponse.classList.remove('hidden');
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+            audioChunks.push(event.data);
+        }
+    };
 
-//         mediaSource.addEventListener("sourceopen", async () => {
-//             console.log("MediaSource opened");
-//             const mimeCodec = 'audio/mpeg';
-//             const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+    mediaRecorder.onstop = () => {
+        const mimeType = mediaRecorder.mimeType;
+        const extension = mimeType.split("/")[1];
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
 
-//             const response = await fetch(url, {
-//                 method: 'POST',
-//                 body: formData,
-//             });
-//             console.log("Fetch request received");
-    
-//             if (!response.ok) {
-//                 const error = await response.text();
-//                 console.error('Error response:', error);
-//                 alert('Error processing audio: ' + error);
-//                 document.getElementById('recordingStatus').textContent = '';
-//                 return;
-//             }
-    
-//             console.log("Started receiving audio stream");
+        console.log("Audio blob size:", audioBlob.size);
 
-//             const reader = response.body.getReader();
-//             let receivedChunks = 0;
+        if (audioBlob.size === 0) {
+            alert("Empty audio recorded. Please try again.");
+            document.getElementById('recordingStatus').textContent = '';
+            return;
+        }
 
-//             async function pump() {
-//                 const { done, value } = await reader.read();
+        processAudio(audioBlob);
 
-//                 if (done) {
-//                     console.log(`Stream complete. Received ${receivedChunks} chunks.`);
+        // Stop the current stream and initialize a new one for next recording
+        // This ensures we'll have a stream ready when user clicks record again
+        releaseRecorderStream()
+    };
 
-//                     // Wait for the sourceBuffer to finish updating before calling endOfStream
-//                     if (sourceBuffer.updating) {
-//                         await new Promise(resolve =>
-//                             sourceBuffer.addEventListener("updateend", resolve, { once: true })
-//                         );
-//                     }
-//                     mediaSource.endOfStream();
-//                     return;
-//                 }
+    mediaRecorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event.error);
+    };
 
-//                 receivedChunks++;
-//                 console.log(`Received chunk ${receivedChunks}: ${value.length} bytes`);
+    mediaRecorder.start();
+    console.log("Recording started.");
+    currentRecorder = mediaRecorder;
+}
 
-//                 try {
-//                     if (sourceBuffer.updating) {
-//                         await new Promise(resolve =>
-//                             sourceBuffer.addEventListener("updateend", resolve, { once: true })
-//                         );
-//                     }
-//                     sourceBuffer.appendBuffer(value);
-//                 } catch (error) {
-//                     console.error("Error appending audio chunk:", error);
-//                 }
-
-//                 pump(); // Continue pumping
-//             }
-
-//             pump();
-//         });
-
-//         // Auto-play once data starts coming in
-//         audioResponse.play().then(() => {
-//             document.getElementById('recordingStatus').textContent = '';
-//             document.getElementById('micContainer').classList.add('audio-playing');
-//         }).catch((e) => {
-//             console.warn("Audio play failed (user interaction likely required):", e);
-//         });
-
-//         // Remove the 'audio-playing' class when audio ends
-//         audioResponse.addEventListener('ended', () => {
-//             document.getElementById('micContainer').classList.remove('audio-playing');
-//         });
-
-//     } catch (error) {
-//         console.error('Error:', error);
-//         alert('An error occurred while processing your request.');
-//         document.getElementById('recordingStatus').textContent = '';
-//     }
-// }
+function stopRecording() {
+    if (currentRecorder && currentRecorder.state !== "inactive") {
+        console.log("Stopping recording...");
+        currentRecorder.stop();
+    }
+}
 
 async function processAudio(audioBlob) {
     console.log("Processing audio...");
@@ -302,7 +252,21 @@ async function processAudio(audioBlob) {
     }
 }
 
+function releaseRecorderStream() {
+    if (recorderStream) {
+        console.log("Releasing recorder stream...");
+        recorderStream.getTracks().forEach(track => track.stop());
+        console.log("stream track state: ", recorderStream.getAudioTracks()[0].readyState); // → "ended"
+        recorderStream = null;
+    }
+}
 
-// An error occurred while processing your request.
-
-// The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.
+// TODO: call this somewhere
+function scheduleReleaseRecorder() {
+    if (recorderReleaseTimeout) {
+        clearTimeout(recorderReleaseTimeout);
+    }
+    recorderReleaseTimeout = setTimeout(() => {
+        releaseRecorderStream();
+    }, 30000); // 30 seconds of inactivity
+}
