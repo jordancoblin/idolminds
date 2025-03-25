@@ -506,6 +506,8 @@ class TTSService:
 
         @web_app.get("/stream-audio/{session_id}")
         async def stream_audio(session_id: str):
+            """Stream the audio file for the given session ID. Note that it's necssary to stream like this 
+            because progressive streaming is not supported on iOS."""
             mp3_path = os.path.join(self.temp_audio_dir, f"{session_id}.mp3")
             if not os.path.exists(mp3_path):
                 raise HTTPException(status_code=404, detail="Audio not found")
