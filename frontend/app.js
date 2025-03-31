@@ -4,7 +4,6 @@ let currentRecorder = null;
 let recorderStream = null;
 let recorderReleaseTimeout = null;
 let decoder = null;
-let scheduledEndTime = null;
 
 function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -234,6 +233,7 @@ async function processAudio(audioBlob) {
 
     // Playback setup
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    let scheduledEndTime = null;
 
     ws.binaryType = "arraybuffer";
 
@@ -300,14 +300,7 @@ async function processAudio(audioBlob) {
                 console.error("Error decoding Opus audio:", err);
                 document.getElementById('recordingStatus').textContent = 'Error playing audio';
             }
-        } else if (type === 3) { // End of stream
-            console.log("Audio stream ended.");
-            document.getElementById('recordingStatus').textContent = '';
-            setTimeout(() => {
-                document.getElementById('micContainer').classList.remove('audio-playing');
-            }, 1000); // Give a small delay after the last audio chunk finishes playing
-            ws.close();
-        }
+        } 
     };
 
     ws.onerror = (event) => {

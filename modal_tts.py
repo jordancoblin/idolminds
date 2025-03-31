@@ -261,7 +261,12 @@ class TTSService:
                     self.opus_writer.append_pcm(frame)
 
                 # Save leftover samples for next chunk
-                self.pcm_buffer = wav[num_full_frames * self.frame_size :]
+                if i < len(text_chunks) - 1:
+                    self.pcm_buffer = wav[num_full_frames * self.frame_size :]
+                elif self.pcm_buffer.size > 0:
+                    # Flush any leftover samples following the last chunk
+                    padded = np.pad(self.pcm_buffer, (0, self.frame_size - self.pcm_buffer.size), mode='constant')
+                    self.opus_writer.append_pcm(padded)
 
                 # Retrieve and yield the encoded Opus data
                 while True:
