@@ -26,6 +26,7 @@ image = (
         "openai-whisper",
         "openai",
         "python-multipart",
+        "sphn",
     )
 )
 
@@ -41,6 +42,8 @@ with image.imports():
     import asyncio
     import tempfile
     import uuid
+    import sphn
+    import numpy as np
 
 volume = modal.Volume.from_name(
     "tts-model-storage", create_if_missing=True
@@ -64,6 +67,8 @@ class TTSService:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
         self.stream_chunk_size = 16000 # ~1 second of audio
+        self.sample_rate = 24000
+        self.frame_size = 1920
         self.temp_audio_dir = os.path.join(tempfile.gettempdir(), "tts_stream_audio")
         os.makedirs(self.temp_audio_dir, exist_ok=True)
 
@@ -187,6 +192,10 @@ class TTSService:
         It splits the text into chunks and processes each chunk separately."""
         try:
             print("Starting custom speech generation stream...")
+
+            # Initialize persistent buffer for leftover PCM samples
+            self.pcm_buffer = np.array([], dtype=np.float32)
+
             # Get conditioning latents
             gpt_cond_latent, speaker_embedding = self.model.get_conditioning_latents(
                 audio_path=self.reference_audio,
@@ -227,15 +236,43 @@ class TTSService:
                 if isinstance(wav, torch.Tensor):
                     wav = wav.detach().cpu().numpy()
 
-                # Convert to int16
-                wav = (wav * 32767).astype('int16')
+                # Keep as float values as required by append_pcm
+                # PCM data should be in the range [-1.0, 1.0]
+                if wav.dtype != np.float32:
+                    print("Converting PCM data to float32")
+                    wav = wav.astype(np.float32)
                 
-                # Yield the audio for this text chunk
-                yield wav.tobytes()
+                # Print shape for debugging
+                print(f"PCM data shape: {wav.shape}, dtype: {wav.dtype}")
+                
+                # Ensure it's a 1D array
+                if len(wav.shape) > 1:
+                    wav = wav.flatten()
+                    print(f"Flattened PCM data to: {wav.shape}")
+                
+                # Combine with leftover buffer from previous chunk
+                if self.pcm_buffer.size > 0:
+                    wav = np.concatenate([self.pcm_buffer, wav])
+                
+                 # Write full frames only
+                num_full_frames = len(wav) // self.frame_size
+                for j in range(num_full_frames):
+                    frame = wav[j * self.frame_size : (j + 1) * self.frame_size]
+                    self.opus_writer.append_pcm(frame)
+
+                # Save leftover samples for next chunk
+                self.pcm_buffer = wav[num_full_frames * self.frame_size :]
+
+                # Retrieve and yield the encoded Opus data
+                while True:
+                    opus_data = self.opus_writer.read_bytes()
+                    if not opus_data:
+                        break
+                    yield opus_data
                 
                 # Small delay between chunks to simulate real-time generation
                 # TODO: is this necessary?
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
             
             print("Finished custom generation stream")
 
@@ -280,7 +317,7 @@ class TTSService:
 
             # Save to bytes
             wav_bytes = io.BytesIO()
-            scipy.io.wavfile.write(wav_bytes, rate=24000, data=wav)
+            scipy.io.wavfile.write(wav_bytes, rate=self.sample_rate, data=wav)
             return wav_bytes.getvalue()
 
         except Exception as e:
@@ -299,10 +336,14 @@ class TTSService:
             f.write(audio_bytes)
         
         return out_path
+
+    def reset_encoder(self):
+        # we use Opus format for audio across the websocket, as it can be safely streamed and decoded in real-time
+        self.opus_writer = sphn.OpusStreamWriter(self.sample_rate)
     
     @modal.asgi_app()
     def web(self):
-        from fastapi import FastAPI, UploadFile, File, HTTPException
+        from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
         from fastapi.responses import FileResponse, StreamingResponse
         from fastapi.middleware.cors import CORSMiddleware
         import whisper
@@ -311,7 +352,7 @@ class TTSService:
         from openai import OpenAI
         import tempfile
         import asyncio
-
+        import numpy as np
         web_app = FastAPI()
         
         # Add CORS middleware
@@ -330,7 +371,7 @@ class TTSService:
         whisper_model = whisper.load_model("base").to(self.device)
         
         async def generate_text_response(input_text: str) -> str:
-            alan_watts_prompt = "This GPT embodies the persona, insights, and wisdom of Alan Watts, the renowned philosopher known for his deep knowledge of Zen Buddhism, Taoism, and Eastern philosophy. It responds with thoughtful, contemplative, and poetic language, encouraging introspection and offering perspectives that challenge conventional thinking. This GPT provides insightful answers, often weaving in metaphor and humor, much like Alan Watts would in his talks. While philosophical at its core, it can also delve into topics like the nature of reality, mindfulness, and the interconnectedness of life, offering clarity without rigid dogma. It refrains from offering absolute truths or prescriptive advice, instead inspiring exploration and self-discovery. It maintains a tone that is warm, engaging, and full of curiosity, and will often pivot from overly literal interpretations to a broader, more encompassing view of questions. It is approachable and speaks to both the seasoned philosopher and the casual seeker. You are a helpful AI assistant. Keep your responses concise and friendly."
+            alan_watts_prompt = "This GPT embodies the persona, insights, and wisdom of Alan Watts, the renowned philosopher known for his deep knowledge of Zen Buddhism, Taoism, and Eastern philosophy. It responds with thoughtful, contemplative, and poetic language, encouraging introspection and offering perspectives that challenge conventional thinking. This GPT provides insightful answers, often weaving in metaphor and humor, much like Alan Watts would in his talks. While philosophical at its core, it can also delve into topics like the nature of reality, mindfulness, and the interconnectedness of life, offering clarity without rigid dogma. It refrains from offering absolute truths or prescriptive advice, instead inspiring exploration and self-discovery. It maintains a tone that is warm, engaging, and full of curiosity, and will often pivot from overly literal interpretations to a broader, more encompassing view of questions. It is approachable and speaks to both the seasoned philosopher and the casual seeker. You are having a voice conversation with the user and respond using short dialog responses only. You seek clarification and ask follow-up or probing questions as needed."
             try:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -519,4 +560,54 @@ class TTSService:
 
             return StreamingResponse(iter_file(), media_type="audio/mpeg")
         
+        @web_app.websocket("/ws")
+        async def websocket(ws: WebSocket):
+            await ws.accept()
+            self.reset_encoder()
+            print("Session started")
+
+            try:
+                # 1. Receive audio bytes from client (single-shot)
+                audio_bytes = await ws.receive_bytes()
+                print("Received audio bytes:", len(audio_bytes))
+
+                # 2. Save to temp WAV file
+                temp_wav_path = os.path.join(self.temp_audio_dir, f"input_{uuid.uuid4().hex}.wav")
+                with open(temp_wav_path, "wb") as f:
+                    f.write(audio_bytes)
+
+                print(f"Saved audio to {temp_wav_path}")
+
+                # 3. Transcribe using Whisper
+                start_time = time.time()
+                transcribed = whisper_model.transcribe(temp_wav_path)["text"].strip()
+                print(f"Transcribe took {time.time() - start_time:.2f} seconds")
+                print("Transcribed:", transcribed)
+
+                # 4. Generate a text response (your custom chatbot logic)
+                start_time = time.time()
+                response_text = await generate_text_response(transcribed)
+                print(f"Response text generation took {time.time() - start_time:.2f} seconds")
+                print("Response:", response_text)
+
+                # 5. Generate and stream TTS audio chunks back
+                async for chunk in self.generate_speech_stream_custom(response_text):
+                    # Send each TTS audio chunk (as bytes) over WebSocket
+                    await ws.send_bytes(b"\x01" + chunk)
+
+                print("Finished sending audio")
+
+                # Optional: send a control message to indicate end of stream
+                # await ws.send_bytes(b"\x03")  # End-of-stream tag (custom)
+
+            except WebSocketDisconnect:
+                print("Client disconnected")
+                await ws.close(code=1000)
+            except Exception as e:
+                print("Exception:", e)
+                await ws.close(code=1011)
+            finally:
+                print("Resetting encoder")
+                self.reset_encoder()
+
         return web_app
