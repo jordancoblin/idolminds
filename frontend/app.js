@@ -94,7 +94,6 @@ async function initRecorderStream() {
     recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     tracks = recorderStream.getTracks();
     console.log("Initialized recorder stream: ", recorderStream);
-    console.log("Tracks: ", tracks);
 }
 
 async function toggleRecording() {
@@ -124,8 +123,6 @@ async function toggleRecording() {
         stopRecording();
         isRecording = false;
         micContainer.classList.remove('recording');
-        status.textContent = 'Processing...';
-
         // scheduleReleaseRecorder();
     }
 }
@@ -174,9 +171,14 @@ async function startRecording() {
         console.error("MediaRecorder error:", event.error);
     };
 
-    mediaRecorder.start();
-    console.log("Recording started.");
-    currentRecorder = mediaRecorder;
+    try {
+        mediaRecorder.start();
+        console.log("Recording started.");
+        currentRecorder = mediaRecorder;
+    } catch (err) {
+        console.error("Failed to start recording:", err);
+        alert("Failed to start recording. Please try again.");
+    }
 }
 
 function stopRecording() {
@@ -229,7 +231,7 @@ async function processAudio(audioBlob) {
     // Show response section while processing
     const responseSection = document.getElementById('responseSection');
     responseSection.classList.remove('hidden');
-    document.getElementById('recordingStatus').textContent = 'Listening...';
+    document.getElementById('recordingStatus').textContent = 'Contemplating...';
 
     // Playback setup
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -239,7 +241,6 @@ async function processAudio(audioBlob) {
 
     ws.onopen = async () => {
         console.log("WebSocket connected, sending audio blob...");
-        document.getElementById('recordingStatus').textContent = 'Processing...';
         try {
             const arrayBuffer = await audioBlob.arrayBuffer();
             ws.send(arrayBuffer);
@@ -254,23 +255,16 @@ async function processAudio(audioBlob) {
         const type = view[0];
         const payload = view.slice(1);
 
-        console.log("Payload bytes:", Array.from(payload.slice(0, 10)));
-
         if (type === 1) { // Audio chunk (Opus)
             try {
                 // await decoder.reset();
 
                 // Change status to show we're playing audio
-                if (document.getElementById('recordingStatus').textContent !== 'Philosophizing...') {
-                    document.getElementById('recordingStatus').textContent = 'Philosophizing...';
-                    document.getElementById('micContainer').classList.add('audio-playing');
-                }
+                document.getElementById('recordingStatus').textContent = '';
+                document.getElementById('micContainer').classList.add('audio-playing');
                 
-                console.log("Decoder:", decoder);
                 const { channelData, samplesDecoded, sampleRate } = await decoder.decode(new Uint8Array(payload));
                 let audioData = channelData[0];
-
-                console.log("Channel:", channelData, ", ", samplesDecoded, "samples per channel");
                 
                 if (samplesDecoded <= 0) {
                     console.log("Received empty audio data", audioData, samplesDecoded, sampleRate);
@@ -293,26 +287,21 @@ async function processAudio(audioBlob) {
                 scheduledEndTime = scheduledStartTime + audioBuffer.duration;
 
                 source.start(scheduledStartTime);
-
-                console.log("Current time:", audioContext.currentTime, "Scheduled start time:", scheduledStartTime);
-            
             } catch (err) {
                 console.error("Error decoding Opus audio:", err);
-                document.getElementById('recordingStatus').textContent = 'Error playing audio';
             }
         } 
     };
 
     ws.onerror = (event) => {
         console.error("WebSocket error:", event);
-        document.getElementById('recordingStatus').textContent = 'Connection error';
         setTimeout(() => {
             document.getElementById('recordingStatus').textContent = '';
         }, 3000);
     };
 
     ws.onclose = (event) => {
-        console.log("WebSocket closed:", event);
+        console.log("WebSocket closed:", event.code, event.reason);
         if (event.code !== 1000) {
             setTimeout(() => {
                 document.getElementById('recordingStatus').textContent = '';
