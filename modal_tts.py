@@ -134,6 +134,8 @@ class TTSService:
         
         # Initialize model
         model = Xtts.init_from_config(config)
+
+        chk_start = time.time()
         model.load_checkpoint(
             config,
             checkpoint_path=xtts_checkpoint,
@@ -141,6 +143,7 @@ class TTSService:
             speaker_file_path=xtts_speaker,
             # use_deepspeed=True
         )
+        print("Checkpoint loaded in ", time.time() - chk_start, " seconds")
         
         # Move to GPU and optimize
         if device == "cuda":
