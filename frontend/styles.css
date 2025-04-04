@@ -1,21 +1,51 @@
 .site-title {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    font-size: 64px;
-    font-weight: 600;
-    color: #F5F5F5; /* Updated to match light text color */
-    letter-spacing: 1px;
+    font-family: 'Georgia', 'Times New Roman', serif; /* Classic serif font */
+    font-size: 50px;
+    font-weight: 500; /* A bit lighter than 600 for elegance */
+    color: #F5F5F5; /* Pure white for clarity */
+    letter-spacing: 0.5px; /* Subtle spacing */
+    text-transform: none; /* Ensure lowercase is preserved */
 }
 
 /* Styling for the warming-up title */
 .warming-up-title {
     opacity: 1;
     z-index: 20;
-    margin-bottom: 2rem;
+    margin-bottom: 4rem;
+    margin-top: -0.5rem; /* Add negative top margin to reduce space from logo */
 }
 
 /* Hide the main title when warming up overlay is visible */
 .warming-up-overlay:not(.hidden) + .container .main-title {
     display: none;
+}
+
+/* Warmup content container */
+.warmup-content {
+    margin-top: 25vh; /* Position content below the logo */
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Logo styling */
+.logo-container {
+    position: absolute;
+    top: 20%;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 21;
+}
+
+.logo-image {
+    max-width: 200px;
+    height: auto;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
 }
 
 .recording {
@@ -313,4 +343,4 @@ audio::-webkit-media-controls-time-remaining-display {
 
 .speaker-background.hidden {
     opacity: 0;
-} 
+}

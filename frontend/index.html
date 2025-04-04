@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IdolMinds</title>
+    <title>Idolminds</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- <script src="opus-decoder.min.js"></script> -->
      <!-- Opus decoder -->
@@ -30,17 +30,23 @@
 <body class="bg-primary min-h-screen flex flex-col items-center justify-center">
     <!-- GPU Warming Up Overlay - Showing IdolMinds title with spinner and text -->
     <div id="warmingUpOverlay" class="warming-up-overlay">
-        <h1 class="site-title warming-up-title mb-8">IdolMinds</h1>
-        
-        <!-- New Quote Display Section -->
-        <div id="quoteContainer" class="quote-container">
-            <p id="quoteText" class="quote-text"></p>
-            <p id="quoteSpeaker" class="quote-speaker"></p>
+        <!-- Logo image (absolutely positioned) -->
+        <div class="logo-container">
+            <img src="{{ url_for('static', path='idolminds_logo.png') }}" alt="IdolMinds Logo" class="logo-image">
         </div>
         
-        <!-- Progress Bar -->
-        <div id="progressContainer" class="progress-container">
-            <div id="progressBar" class="progress-bar"></div>
+        <!-- Content container for quotes and progress bar -->
+        <div class="warmup-content">
+            <!-- New Quote Display Section -->
+            <div id="quoteContainer" class="quote-container">
+                <p id="quoteText" class="quote-text"></p>
+                <p id="quoteSpeaker" class="quote-speaker"></p>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div id="progressContainer" class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
         </div>
     </div>
 

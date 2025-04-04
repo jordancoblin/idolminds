@@ -40,7 +40,7 @@ let speakerQuotes = [
         speaker: "Alan Watts"
     },
     {
-        text: "It’s better to have a short life that is full of what you like doing, than a long life spent in a miserable way.",
+        text: "It's better to have a short life that is full of what you like doing, than a long life spent in a miserable way.",
         speaker: "Alan Watts"
     },
     {
@@ -93,20 +93,6 @@ const getTTSServiceURL = () => {
 // Function to warm up the GPU when the page loads
 async function warmupGPU() {
     try {
-        // Show warming up UI with IdolMinds title and quotes
-        document.getElementById('warmingUpOverlay').classList.remove('hidden');
-        document.getElementById('micContainer').classList.add('warming-up');
-        document.getElementById('recordButton').disabled = true;
-        
-        // Show blurred background of speaker
-        document.getElementById('speakerBackground').classList.remove('hidden');
-        
-        // Start rotating through quotes
-        startQuoteRotation();
-        
-        // Start progress bar animation (will animate to about 90% while waiting)
-        startProgressBar(90);
-        
         const baseURL = getTTSServiceURL();
         const url = `${baseURL}/warmup`;
         
@@ -130,7 +116,7 @@ async function warmupGPU() {
         
         // Hide warming up overlay with fade effect
         document.getElementById('warmingUpOverlay').classList.add('hidden');
-        document.getElementById('speakerBackground').classList.add('hidden');
+        document.getElementById('micContainer').classList.remove('hidden');
         
         // Grow the mic button with animation
         const micContainer = document.getElementById('micContainer');
@@ -141,13 +127,11 @@ async function warmupGPU() {
         document.getElementById('recordButton').disabled = false;
         
         isReady = true;
-        
     } catch (error) {
         console.error('GPU warmup error:', error);
         // Even if there's an error, still show the UI
         stopQuoteRotation();
         document.getElementById('warmingUpOverlay').classList.add('hidden');
-        document.getElementById('speakerBackground').classList.add('hidden');
         document.getElementById('micContainer').classList.remove('warming-up');
         document.getElementById('micContainer').classList.add('ready');
         document.getElementById('recordButton').disabled = false;
@@ -215,23 +199,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Shuffle the quotes array once at page load
     speakerQuotes = shuffleArray(speakerQuotes);
     
-    // Initialize UI - show IdolMinds title with spinner and text during warm-up
+    // Show warming up UI with IdolMinds title and quotes
     document.getElementById('warmingUpOverlay').classList.remove('hidden');
-    
-    // Get the Alan Watts image and use it as background for the speaker
-    const alanWattsImg = document.getElementById('alanWattsImg');
-    const speakerBackground = document.getElementById('speakerBackground');
-    
-    // If the image is loaded, use its src for the background
-    if (alanWattsImg && alanWattsImg.src) {
-        // Extract the filename from the src URL
-        const imgSrc = alanWattsImg.src;
-        const imgFilename = imgSrc.substring(imgSrc.lastIndexOf('/') + 1);
-        
-        // Update the background image
-        speakerBackground.style.backgroundImage = `url('${imgFilename}')`;
-    }
-    
+    document.getElementById('micContainer').classList.add('hidden');
+    document.getElementById('recordButton').disabled = true;
+    startQuoteRotation();
+    startProgressBar(90);
+
     // Start warmup
     warmupGPU();
     initRecorderStream(); // Initialize recorder stream when page loads
@@ -389,6 +363,7 @@ async function processAudio(audioBlob) {
     // Playback setup
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     let scheduledEndTime = null;
+    let audioFinishTimeout = null; // To track when audio finishes playing
 
     ws.binaryType = "arraybuffer";
 
@@ -438,6 +413,18 @@ async function processAudio(audioBlob) {
                 scheduledEndTime = scheduledStartTime + audioBuffer.duration;
 
                 source.start(scheduledStartTime);
+                
+                // Clear any existing timeout for audio finish
+                if (audioFinishTimeout) {
+                    clearTimeout(audioFinishTimeout);
+                }
+                
+                // Set timeout to remove audio-playing class after the scheduled end time
+                const timeUntilFinished = (scheduledEndTime - audioContext.currentTime) * 1000;
+                audioFinishTimeout = setTimeout(() => {
+                    document.getElementById('micContainer').classList.remove('audio-playing');
+                    audioFinishTimeout = null;
+                }, timeUntilFinished + 100); // Add 100ms buffer
             } catch (err) {
                 console.error("Error decoding Opus audio:", err);
             }
@@ -446,6 +433,10 @@ async function processAudio(audioBlob) {
 
     ws.onerror = (event) => {
         console.error("WebSocket error:", event);
+        // Only remove audio-playing class if no audio is scheduled to play
+        if (!scheduledEndTime || audioContext.currentTime >= scheduledEndTime) {
+            document.getElementById('micContainer').classList.remove('audio-playing');
+        }
         setTimeout(() => {
             document.getElementById('recordingStatus').textContent = '';
         }, 3000);
@@ -453,6 +444,8 @@ async function processAudio(audioBlob) {
 
     ws.onclose = (event) => {
         console.log("WebSocket closed:", event.code, event.reason);
+        // Don't remove audio-playing here - let it be handled by the timeout
+        // that's scheduled after the last audio chunk finishes playing
         if (event.code !== 1000) {
             setTimeout(() => {
                 document.getElementById('recordingStatus').textContent = '';
