@@ -7,14 +7,6 @@
     text-transform: none; /* Ensure lowercase is preserved */
 }
 
-/* Styling for the warming-up title */
-.warming-up-title {
-    opacity: 1;
-    z-index: 20;
-    margin-bottom: 4rem;
-    margin-top: -0.5rem; /* Add negative top margin to reduce space from logo */
-}
-
 /* Hide the main title when warming up overlay is visible */
 .warming-up-overlay:not(.hidden) + .container .main-title {
     display: none;
@@ -28,6 +20,22 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
+}
+
+/* Fade-in animation for mic container */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 1.2s ease-out forwards;
 }
 
 /* Logo styling */
@@ -194,44 +202,6 @@ audio::-webkit-media-controls-time-remaining-display {
     transform: translateY(0);
 }
 
-/* GPU Warm-up state */
-.warming-up-container {
-    position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.warming-up {
-    transform: scale(0.8);
-}
-
-.warming-up .mic-button {
-    background-color: rgba(138, 86, 255, 0.7); /* Updated to semi-transparent purple */
-    width: 120px;
-    height: 120px;
-}
-
-.warming-up .mic-icon {
-    display: none;
-}
-
-.warming-up .mic-image {
-    opacity: 0.7;
-}
-
-.warming-up .mic-ripple {
-    animation: warmup-pulse 1.5s infinite;
-    opacity: 0.3;
-    background-color: #F5F5F5; /* Updated to soft white */
-}
-
-@keyframes warmup-pulse {
-    0% { transform: scale(1); opacity: 0.3; }
-    50% { transform: scale(1.5); opacity: 0.1; }
-    100% { transform: scale(1); opacity: 0.3; }
-}
-
 .mic-icon {
     opacity: 0;
     transform: scale(0.5);
@@ -314,6 +284,7 @@ audio::-webkit-media-controls-time-remaining-display {
     background: rgba(245, 245, 245, 0.2);
     border-radius: 4px;
     margin-bottom: 2rem;
+    margin-top: 1rem;
     overflow: hidden;
 }
 

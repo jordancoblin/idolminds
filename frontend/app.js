@@ -116,15 +116,18 @@ async function warmupGPU() {
         
         // Hide warming up overlay with fade effect
         document.getElementById('warmingUpOverlay').classList.add('hidden');
-        document.getElementById('micContainer').classList.remove('hidden');
         
-        // Grow the mic button with animation
+        // Apply fade-in animation to mic container
         const micContainer = document.getElementById('micContainer');
-        micContainer.classList.remove('warming-up');
-        micContainer.classList.add('ready');
+        micContainer.classList.remove('hidden');
+        micContainer.classList.add('fade-in');
         
-        // Enable the record button
-        document.getElementById('recordButton').disabled = false;
+        // Short delay before adding the ready class to allow fade-in to start
+        setTimeout(() => {
+            micContainer.classList.add('ready');
+            // Enable the record button
+            document.getElementById('recordButton').disabled = false;
+        }, 200);
         
         isReady = true;
     } catch (error) {
@@ -132,9 +135,19 @@ async function warmupGPU() {
         // Even if there's an error, still show the UI
         stopQuoteRotation();
         document.getElementById('warmingUpOverlay').classList.add('hidden');
-        document.getElementById('micContainer').classList.remove('warming-up');
-        document.getElementById('micContainer').classList.add('ready');
-        document.getElementById('recordButton').disabled = false;
+        
+        // Apply fade-in animation to mic container
+        const micContainer = document.getElementById('micContainer');
+        micContainer.classList.remove('hidden');
+        micContainer.classList.add('fade-in');
+        
+        // Short delay before adding the ready class to allow fade-in to start
+        setTimeout(() => {
+            micContainer.classList.add('ready');
+            // Enable the record button
+            document.getElementById('recordButton').disabled = false;
+        }, 200);
+        
         isReady = true;
     }
 }
