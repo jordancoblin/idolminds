@@ -253,7 +253,7 @@ audio::-webkit-media-controls-time-remaining-display {
     margin: 0 auto 2rem;
     text-align: center;
     opacity: 0;
-    animation: fadeInOut 8s ease-in-out infinite;
+    animation: fadeInOut 10s ease-in-out infinite;
 }
 
 @keyframes fadeInOut {
@@ -292,7 +292,7 @@ audio::-webkit-media-controls-time-remaining-display {
     background: #8A56FF; /* Purple accent */
     width: 0%;
     border-radius: 4px;
-    transition: width 0.3s ease;
+    transition: width 0.8s ease;
 }
 
 /* Speaker background with blur */

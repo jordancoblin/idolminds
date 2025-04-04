@@ -10,7 +10,7 @@ let quoteInterval = null;
 const quoteDuration = 10000;
 
 // Quotes from Alan Watts (or your current AI speaker)
-const speakerQuotes = [
+let speakerQuotes = [
     {
         text: "The only way to make sense out of change is to plunge into it, move with it, and join the dance.",
         speaker: "Alan Watts"
@@ -30,8 +30,41 @@ const speakerQuotes = [
     {
         text: "The art of living is neither careless drifting on the one hand nor fearful clinging on the other.",
         speaker: "Alan Watts"
-    }
+    },
+    {
+        text: "Muddy water is best cleared by leaving it alone.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "A scholar tries to learn something everyday; a student of Buddhism tries to unlearn something daily.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "It’s better to have a short life that is full of what you like doing, than a long life spent in a miserable way.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "For there is never anything but the present, and if one cannot live there, one cannot live anywhere.",
+        speaker: "Alan Watts"
+    },
 ];
+
+// Fisher-Yates (Knuth) shuffle algorithm
+function shuffleArray(array) {
+    // Create a copy of the array to avoid modifying the original
+    const shuffled = [...array];
+    
+    // Start from the last element and swap with a random element
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        // Pick a random index from 0 to i
+        const j = Math.floor(Math.random() * (i + 1));
+        
+        // Swap elements at i and j
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    return shuffled;
+}
 
 function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -71,8 +104,8 @@ async function warmupGPU() {
         // Start rotating through quotes
         startQuoteRotation();
         
-        // Start progress bar animation
-        startProgressBar();
+        // Start progress bar animation (will animate to about 90% while waiting)
+        startProgressBar(90);
         
         const baseURL = getTTSServiceURL();
         const url = `${baseURL}/warmup`;
@@ -84,25 +117,30 @@ async function warmupGPU() {
         
         console.log('GPU warmup result:', result);
         
+        // Fill progress bar to 100% when API call completes
+        stopProgressBar();
+        document.getElementById('progressBar').style.width = '100%';
+        
+        // Add a delay to ensure users see the completed progress bar
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // After warmup completes, transition to ready state
-        setTimeout(() => {
-            // Stop quote rotation and progress bar
-            stopQuoteRotation();
-            
-            // Hide warming up overlay with fade effect
-            document.getElementById('warmingUpOverlay').classList.add('hidden');
-            document.getElementById('speakerBackground').classList.add('hidden');
-            
-            // Grow the mic button with animation
-            const micContainer = document.getElementById('micContainer');
-            micContainer.classList.remove('warming-up');
-            micContainer.classList.add('ready');
-            
-            // Enable the record button
-            document.getElementById('recordButton').disabled = false;
-            
-            isReady = true;
-        }, 500); // Small delay for better visual effect
+        // Stop quote rotation and progress bar
+        stopQuoteRotation();
+        
+        // Hide warming up overlay with fade effect
+        document.getElementById('warmingUpOverlay').classList.add('hidden');
+        document.getElementById('speakerBackground').classList.add('hidden');
+        
+        // Grow the mic button with animation
+        const micContainer = document.getElementById('micContainer');
+        micContainer.classList.remove('warming-up');
+        micContainer.classList.add('ready');
+        
+        // Enable the record button
+        document.getElementById('recordButton').disabled = false;
+        
+        isReady = true;
         
     } catch (error) {
         console.error('GPU warmup error:', error);
@@ -119,11 +157,13 @@ async function warmupGPU() {
 
 // Function to start rotating through quotes
 function startQuoteRotation() {
-    // Set initial quote
+    // Start from the first quote in the shuffled list
+    currentQuoteIndex = 0;
     updateQuote();
     
-    // Rotate quotes every 8 seconds (matching fadeInOut animation duration)
+    // Rotate quotes every quoteDuration seconds, going through the shuffled list sequentially
     quoteInterval = setInterval(() => {
+        // Move to the next quote in the shuffled list
         currentQuoteIndex = (currentQuoteIndex + 1) % speakerQuotes.length;
         updateQuote();
     }, quoteDuration);
@@ -135,7 +175,9 @@ function stopQuoteRotation() {
         clearInterval(quoteInterval);
         quoteInterval = null;
     }
-    
+}
+
+function stopProgressBar() {
     if (progressInterval) {
         clearInterval(progressInterval);
         progressInterval = null;
@@ -154,15 +196,15 @@ function updateQuote() {
 }
 
 // Function to animate the progress bar
-function startProgressBar() {
+function startProgressBar(targetPercentage = 100) {
     const progressBar = document.getElementById('progressBar');
     let progress = 0;
     const totalTime = 45; // Total estimated time in seconds
     const updateInterval = 200; // Update every 200ms
     
     progressInterval = setInterval(() => {
-        progress += (updateInterval / (totalTime * 1000)) * 100;
-        if (progress > 100) progress = 100;
+        progress += (updateInterval / (totalTime * 1000)) * targetPercentage;
+        if (progress > targetPercentage) progress = targetPercentage;
         
         progressBar.style.width = `${progress}%`;
     }, updateInterval);
@@ -170,6 +212,9 @@ function startProgressBar() {
 
 // Call warmup when the page loads
 document.addEventListener('DOMContentLoaded', () => {
+    // Shuffle the quotes array once at page load
+    speakerQuotes = shuffleArray(speakerQuotes);
+    
     // Initialize UI - show IdolMinds title with spinner and text during warm-up
     document.getElementById('warmingUpOverlay').classList.remove('hidden');
     
