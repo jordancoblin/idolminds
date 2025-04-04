@@ -48,10 +48,11 @@
     justify-content: center;
     align-items: center;
     z-index: 21;
+    margin-bottom: 1rem;
 }
 
 .logo-image {
-    max-width: 200px;
+    max-width: 160px;
     height: auto;
     filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
 }
