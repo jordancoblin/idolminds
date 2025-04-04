@@ -4,6 +4,34 @@ let currentRecorder = null;
 let recorderStream = null;
 let recorderReleaseTimeout = null;
 let decoder = null;
+let currentQuoteIndex = 0;
+let progressInterval = null;
+let quoteInterval = null;
+const quoteDuration = 10000;
+
+// Quotes from Alan Watts (or your current AI speaker)
+const speakerQuotes = [
+    {
+        text: "The only way to make sense out of change is to plunge into it, move with it, and join the dance.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "We do not 'come into' this world; we come out of it, as leaves from a tree.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "The meaning of life is just to be alive. It is so plain and so obvious and so simple.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "You are a function of what the whole universe is doing in the same way that a wave is a function of what the whole ocean is doing.",
+        speaker: "Alan Watts"
+    },
+    {
+        text: "The art of living is neither careless drifting on the one hand nor fearful clinging on the other.",
+        speaker: "Alan Watts"
+    }
+];
 
 function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -32,10 +60,19 @@ const getTTSServiceURL = () => {
 // Function to warm up the GPU when the page loads
 async function warmupGPU() {
     try {
-        // Show warming up UI with IdolMinds title, spinner and text
+        // Show warming up UI with IdolMinds title and quotes
         document.getElementById('warmingUpOverlay').classList.remove('hidden');
         document.getElementById('micContainer').classList.add('warming-up');
         document.getElementById('recordButton').disabled = true;
+        
+        // Show blurred background of speaker
+        document.getElementById('speakerBackground').classList.remove('hidden');
+        
+        // Start rotating through quotes
+        startQuoteRotation();
+        
+        // Start progress bar animation
+        startProgressBar();
         
         const baseURL = getTTSServiceURL();
         const url = `${baseURL}/warmup`;
@@ -49,8 +86,12 @@ async function warmupGPU() {
         
         // After warmup completes, transition to ready state
         setTimeout(() => {
+            // Stop quote rotation and progress bar
+            stopQuoteRotation();
+            
             // Hide warming up overlay with fade effect
             document.getElementById('warmingUpOverlay').classList.add('hidden');
+            document.getElementById('speakerBackground').classList.add('hidden');
             
             // Grow the mic button with animation
             const micContainer = document.getElementById('micContainer');
@@ -66,7 +107,9 @@ async function warmupGPU() {
     } catch (error) {
         console.error('GPU warmup error:', error);
         // Even if there's an error, still show the UI
+        stopQuoteRotation();
         document.getElementById('warmingUpOverlay').classList.add('hidden');
+        document.getElementById('speakerBackground').classList.add('hidden');
         document.getElementById('micContainer').classList.remove('warming-up');
         document.getElementById('micContainer').classList.add('ready');
         document.getElementById('recordButton').disabled = false;
@@ -74,10 +117,75 @@ async function warmupGPU() {
     }
 }
 
+// Function to start rotating through quotes
+function startQuoteRotation() {
+    // Set initial quote
+    updateQuote();
+    
+    // Rotate quotes every 8 seconds (matching fadeInOut animation duration)
+    quoteInterval = setInterval(() => {
+        currentQuoteIndex = (currentQuoteIndex + 1) % speakerQuotes.length;
+        updateQuote();
+    }, quoteDuration);
+}
+
+// Function to stop quote rotation
+function stopQuoteRotation() {
+    if (quoteInterval) {
+        clearInterval(quoteInterval);
+        quoteInterval = null;
+    }
+    
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+}
+
+// Function to update the displayed quote
+function updateQuote() {
+    const quoteText = document.getElementById('quoteText');
+    const quoteSpeaker = document.getElementById('quoteSpeaker');
+    
+    const currentQuote = speakerQuotes[currentQuoteIndex];
+    
+    quoteText.textContent = `"${currentQuote.text}"`;
+    quoteSpeaker.textContent = `- ${currentQuote.speaker}`;
+}
+
+// Function to animate the progress bar
+function startProgressBar() {
+    const progressBar = document.getElementById('progressBar');
+    let progress = 0;
+    const totalTime = 45; // Total estimated time in seconds
+    const updateInterval = 200; // Update every 200ms
+    
+    progressInterval = setInterval(() => {
+        progress += (updateInterval / (totalTime * 1000)) * 100;
+        if (progress > 100) progress = 100;
+        
+        progressBar.style.width = `${progress}%`;
+    }, updateInterval);
+}
+
 // Call warmup when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize UI - show IdolMinds title with spinner and text during warm-up
     document.getElementById('warmingUpOverlay').classList.remove('hidden');
+    
+    // Get the Alan Watts image and use it as background for the speaker
+    const alanWattsImg = document.getElementById('alanWattsImg');
+    const speakerBackground = document.getElementById('speakerBackground');
+    
+    // If the image is loaded, use its src for the background
+    if (alanWattsImg && alanWattsImg.src) {
+        // Extract the filename from the src URL
+        const imgSrc = alanWattsImg.src;
+        const imgFilename = imgSrc.substring(imgSrc.lastIndexOf('/') + 1);
+        
+        // Update the background image
+        speakerBackground.style.backgroundImage = `url('${imgFilename}')`;
+    }
     
     // Start warmup
     warmupGPU();
@@ -257,8 +365,6 @@ async function processAudio(audioBlob) {
 
         if (type === 1) { // Audio chunk (Opus)
             try {
-                // await decoder.reset();
-
                 // Change status to show we're playing audio
                 document.getElementById('recordingStatus').textContent = '';
                 document.getElementById('micContainer').classList.add('audio-playing');

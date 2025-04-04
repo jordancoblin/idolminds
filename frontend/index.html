@@ -31,10 +31,21 @@
     <!-- GPU Warming Up Overlay - Showing IdolMinds title with spinner and text -->
     <div id="warmingUpOverlay" class="warming-up-overlay">
         <h1 class="site-title warming-up-title mb-8">IdolMinds</h1>
-        <div class="loading-spinner"></div>
-        <p class="text-textPrimary text-xl mb-2">Warming up...</p>
-        <p class="text-textPrimary text-sm">This may take a minute</p>
+        
+        <!-- New Quote Display Section -->
+        <div id="quoteContainer" class="quote-container">
+            <p id="quoteText" class="quote-text"></p>
+            <p id="quoteSpeaker" class="quote-speaker"></p>
+        </div>
+        
+        <!-- Progress Bar -->
+        <div id="progressContainer" class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
     </div>
+
+    <!-- Background image container with blur effect (positioned behind the overlay) -->
+    <div id="speakerBackground" class="speaker-background hidden"></div>
 
     <div class="container mx-auto px-4 py-8 flex flex-col items-center">
         <!-- No IdolMinds title in main UI - will be hidden after warmup -->
