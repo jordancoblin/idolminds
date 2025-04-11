@@ -371,7 +371,7 @@ async function processAudio(audioBlob) {
     // Show response section while processing
     const responseSection = document.getElementById('responseSection');
     responseSection.classList.remove('hidden');
-    document.getElementById('recordingStatus').textContent = 'Contemplating...';
+    document.getElementById('recordingStatus').textContent = '';
 
     // Playback setup
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
