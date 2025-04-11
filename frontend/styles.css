@@ -14,8 +14,12 @@
 
 /* Warmup content container */
 .warmup-content {
-    margin-top: 25vh; /* Position content below the logo */
+    padding-top: 0; /* Remove fixed padding */
+    margin-top: 160px; /* Add margin from the logo */
+    padding-left: 1rem;
+    padding-right: 1rem;
     max-width: 800px;
+    width: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -40,15 +44,15 @@
 
 /* Logo styling */
 .logo-container {
-    position: absolute;
-    top: 20%;
+    position: fixed;
+    top: 40%; /* Position logo above center of screen */
+    transform: translateY(-100%); /* Move up by its own height to position above center */
     left: 0;
     right: 0;
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 21;
-    margin-bottom: 1rem;
 }
 
 .logo-image {
@@ -248,10 +252,9 @@ audio::-webkit-media-controls-time-remaining-display {
     pointer-events: none;
 }
 
-/* New quote container styles */
 .quote-container {
     max-width: 600px;
-    margin: 0 auto 2rem;
+    margin: 0 auto 1.5rem;
     text-align: center;
     opacity: 0;
     animation: fadeInOut 10s ease-in-out infinite;
@@ -278,14 +281,13 @@ audio::-webkit-media-controls-time-remaining-display {
     font-weight: 500;
 }
 
-/* Progress bar styles */
 .progress-container {
-    width: 200px;
+    width: 60%;
+    max-width: 300px;
     height: 4px;
     background: rgba(245, 245, 245, 0.2);
     border-radius: 4px;
-    margin-bottom: 2rem;
-    margin-top: 1rem;
+    margin: 1rem auto 2rem;
     overflow: hidden;
 }
 
@@ -315,4 +317,27 @@ audio::-webkit-media-controls-time-remaining-display {
 
 .speaker-background.hidden {
     opacity: 0;
+}
+
+/* Add responsive adjustments for very small screens */
+@media (max-height: 640px) {
+    .logo-container {
+        top: 38%; /* Slightly higher on small screens */
+    }
+    
+    .logo-image {
+        max-width: 120px; /* Smaller logo on small screens */
+    }
+    
+    .warmup-content {
+        margin-top: 120px; /* Reduced spacing on small screens */
+    }
+    
+    .quote-text {
+        font-size: 1.2rem; /* Smaller text on small screens */
+    }
+    
+    .quote-speaker {
+        font-size: 1rem; /* Smaller text on small screens */
+    }
 }
